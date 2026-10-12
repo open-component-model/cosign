@@ -1,0 +1,19 @@
+# Build context is dist/ (cosign-<os>-<arch> binaries), not the repo root.
+# cosign needs TLS roots and a writable $HOME for its TUF cache ($HOME/.sigstore).
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /rootfs/home/nonroot /rootfs/tmp && chmod 1777 /rootfs/tmp
+
+FROM scratch
+ARG TARGETOS
+ARG TARGETARCH
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=base --chown=65532:65532 /rootfs/home/nonroot /home/nonroot
+COPY --from=base /rootfs/tmp /tmp
+COPY cosign-${TARGETOS}-${TARGETARCH} /cosign
+ENV HOME=/home/nonroot
+USER 65532:65532
+ENTRYPOINT ["/cosign"]

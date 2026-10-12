@@ -1,0 +1,235 @@
+# Managed by ocm-main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
+name: OCM Release
+
+on:
+  push:
+    branches: ['ocm/v*']
+  workflow_dispatch: {}
+
+# Serialize releases per branch; a superseded pending run is dropped because the
+# newer commit contains its changes.
+concurrency:
+  group: ocm-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  GOFIPS140: certified
+  GOTOOLCHAIN: local
+  IMAGE: ghcr.io/open-component-model/cosign
+
+jobs:
+  ci:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ocm-ci.yml
+
+  version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      base: ${{ steps.v.outputs.base }}
+      version: ${{ steps.v.outputs.version }}
+      skip: ${{ steps.v.outputs.skip }}
+      latest: ${{ steps.v.outputs.latest }}
+      prev: ${{ steps.v.outputs.prev }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+      - id: v
+        name: Compute release version
+        run: |
+          set -euo pipefail
+          BASE="${GITHUB_REF_NAME#ocm/}"
+          if ! [[ "$BASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected branch ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$(git tag --points-at HEAD --list "${BASE}-ocm.*")" ]; then
+            echo "HEAD is already released: $(git tag --points-at HEAD --list "${BASE}-ocm.*" | tr '\n' ' ')"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          last="$(git tag --list "${BASE}-ocm.*" | sed "s/^${BASE}-ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
+          VERSION="${BASE}-ocm.$(( ${last:-0} + 1 ))"
+          if [ -n "$last" ]; then PREV="${BASE}-ocm.${last}"; else PREV="${BASE}"; fi
+
+          highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
+          if [ "$BASE" = "$highest" ]; then LATEST=true; else LATEST=false; fi
+
+          {
+            echo "skip=false"
+            echo "version=${VERSION}"
+            echo "prev=${PREV}"
+            echo "latest=${LATEST}"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION} prev=${PREV} latest=${LATEST}"
+
+  build:
+    needs: [ci, version]
+    if: needs.version.outputs.skip != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load .github/ocm/.env
+        run: echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - name: Build FIPS binary
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          # Go stamps the main module version from VCS, and release-utils prefers
+          # it over the gitVersion ldflag; without VCS stamping GIT_VERSION wins.
+          GOFLAGS: -buildvcs=false
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # The Makefile forces CGO_ENABLED=0 and -trimpath.
+          make cosign GIT_VERSION="$VERSION"
+          mkdir -p dist
+          mv cosign "dist/cosign-linux-${GOARCH}"
+      - name: Verify FIPS build info
+        run: .github/ocm/verify-fips.sh "dist/cosign-linux-${{ matrix.goarch }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bin-linux-${{ matrix.goarch }}
+          path: dist/cosign-linux-${{ matrix.goarch }}
+          if-no-files-found: error
+
+  image:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      BASE: ${{ needs.version.outputs.base }}
+      VERSION: ${{ needs.version.outputs.version }}
+      LATEST: ${{ needs.version.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: bin-linux-*
+          path: dist
+          merge-multiple: true
+      - run: chmod +x dist/cosign-*
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Smoke-test image
+        run: |
+          docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
+          .github/ocm/smoke-image.sh cosign-smoke "$VERSION"
+      - id: push
+        name: Build and push multi-arch image
+        run: |
+          set -euo pipefail
+          tags=(-t "${IMAGE}:${VERSION}" -t "${IMAGE}:${BASE}-ocm")
+          if [ "$LATEST" = true ]; then tags+=(-t "${IMAGE}:latest"); fi
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false --sbom=false \
+            --push --metadata-file meta.json \
+            -f .github/ocm/Containerfile \
+            "${tags[@]}" \
+            --label org.opencontainers.image.source=https://github.com/open-component-model/cosign \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            dist
+          echo "digest=$(jq -r '."containerimage.digest"' meta.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    needs: [version, build, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      BASE: ${{ needs.version.outputs.base }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PREV: ${{ needs.version.outputs.prev }}
+      LATEST: ${{ needs.version.outputs.latest }}
+      DIGEST: ${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Load .github/ocm/.env
+        run: echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: bin-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          chmod +x dist/cosign-*
+          (cd dist && sha256sum cosign-* > cosign_checksums.txt)
+          cat dist/cosign_checksums.txt
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: dist/cosign-*
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          {
+            echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module $(cat "$(go env GOROOT)/lib/fips140/certified.txt") (GOFIPS140=certified, CGO disabled)."
+            echo
+            echo "Image: \`${IMAGE}:${VERSION}@${DIGEST}\`"
+            echo
+            echo "Changes since ${PREV}:"
+            echo
+            git log --no-merges --format='- %s (%h)' "${PREV}..HEAD"
+          } > notes.md
+          cat notes.md
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$LATEST" = true ]; then latest=--latest; else latest=--latest=false; fi
+          gh release create "$VERSION" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file notes.md \
+            "$latest"

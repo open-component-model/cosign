@@ -1,0 +1,141 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'config:best-practices',
+    'docker:pinDigests',
+    'helpers:pinGitHubActionDigests',
+    'security:openssf-scorecard',
+    ':dependencyDashboard',
+    ':rebaseStalePrs',
+  ],
+  // ocm-main (overlay tooling) plus every maintenance branch ocm/vX.Y.Z.
+  baseBranchPatterns: ['$default', '/^ocm\\/v\\d+\\.\\d+\\.\\d+$/'],
+  updateNotScheduled: true, // Update branches that have already been created
+  minimumReleaseAge: '28 days',
+  internalChecksFilter: 'strict',
+  prCreation: 'not-pending',
+  // No internalChecksAsSuccess (unlike OCM): OCM CI / Control CI run on renovate/**
+  // branches, and counting internal checks as success could automerge before CI reports.
+  lockFileMaintenance: {
+    enabled: false,
+  },
+  branchPrefix: 'renovate/',
+  gitAuthor: 'ocmbot[bot] <125909804+ocmbot[bot]@users.noreply.github.com>',
+  gitIgnoredAuthors: [
+    '125909804+ocmbot[bot]@users.noreply.github.com',
+  ],
+  prConcurrentLimit: 0,
+  prHourlyLimit: 0,
+  automerge: true, // no review
+  automergeType: 'branch', // fast-forward onto base after green CI, auto-rebase, PR only on failure
+  separateMinorPatch: true,
+  separateMultipleMajor: true,
+  // GitHub Dependabot alerts only cover the default branch.
+  osvVulnerabilityAlerts: true,
+  vulnerabilityAlerts: {
+    automerge: true,
+    automergeType: 'branch',
+    labels: ['security'],
+  },
+  packageRules: [
+    {
+      // Control branch: overlay tooling, one weekly group.
+      matchBaseBranches: ['ocm-main'],
+      matchManagers: ['github-actions', 'dockerfile', 'custom.regex'],
+      groupName: 'OCM tooling',
+      groupSlug: 'ocm-tooling',
+      separateMinorPatch: false,
+      internalChecksFilter: 'flexible',
+      schedule: [
+        '* * * * 0', // At every minute on Sunday it is allowed to create branches
+      ],
+    },
+    {
+      // Go toolchain: own group, any time (stdlib security fixes).
+      matchBaseBranches: ['ocm-main'],
+      matchDatasources: ['golang-version'],
+      groupName: 'Go toolchain',
+      groupSlug: 'go-toolchain',
+      schedule: ['at any time'],
+    },
+    {
+      // Go patch releases skip the release-age gate.
+      matchBaseBranches: ['ocm-main'],
+      matchDatasources: ['golang-version'],
+      matchUpdateTypes: ['patch'],
+      minimumReleaseAge: null,
+    },
+    {
+      // Maintenance branches: everything off. Overlay files there are written
+      // only by Sync upstream, so its refresh never fights Renovate.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      enabled: false,
+    },
+    {
+      // Minor and patch share the group branch below. Renovate derives update
+      // types from this option, so it cannot sit in a rule with matchUpdateTypes.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      separateMinorPatch: false,
+    },
+    {
+      // ... except non-major Go modules (incl. indirect) in one weekly group.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      enabled: true,
+      groupName: 'Go modules (non-major)',
+      groupSlug: 'gomod-non-major',
+      internalChecksFilter: 'flexible',
+      postUpdateOptions: ['gomodTidy'],
+      schedule: [
+        '* * * * 0', // At every minute on Sunday it is allowed to create branches
+      ],
+    },
+    {
+      // The Go version comes from overlay GO_VERSION, never from go.mod directives.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchDepTypes: ['golang', 'toolchain'],
+      enabled: false,
+    },
+    {
+      // Renamed to github.com/ThalesGroup/crypto11 at v1.5.0. Bumps past v1.4.x
+      // on the old path fail the go.sum artifact step with a module-path
+      // mismatch (OCM #2966, #3379).
+      matchManagers: ['gomod'],
+      matchDepNames: ['github.com/ThalesIgnite/crypto11'],
+      enabled: false,
+    },
+    {
+      // Renovate has no release timestamp for these types and
+      // minimumReleaseAge requires that to work, otherwise, it will just never update them.
+      matchUpdateTypes: [
+        'lockFileMaintenance',
+        'replacement',
+        'pin',
+        'pinDigest',
+        'digest',
+        'bump',
+        'lockfileUpdate',
+        'rollback',
+      ],
+      minimumReleaseAge: null,
+    },
+  ],
+  customManagers: [
+    {
+      // # renovate: datasource=<ds> depName=<name>
+      // <NAME>_VERSION=<version>
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)\\.env$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+.*?_VERSION=v?(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      versioningTemplate: 'semver',
+    },
+  ],
+}

@@ -1,0 +1,69 @@
+# Checks Renovate's branch automerge waits on for ocm-main changes.
+name: Control CI
+
+on:
+  push:
+    branches: ['renovate/**']
+  pull_request:
+    branches: [ocm-main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck hack/*.sh overlay/.github/ocm/*.sh
+      - name: Validate Renovate config
+        run: npx --yes --package renovate -- renovate-config-validator --strict .github/renovate.json5
+
+  overlay-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: control
+          persist-credentials: false
+      - name: Pick highest maintenance branch
+        run: |
+          ref="$(git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}" 'refs/heads/ocm/v*' | sed 's#.*refs/heads/##' | sort -V | tail -1)"
+          echo "TARGET_REF=${ref:-v3.1.3}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_REF }}
+          path: work
+          persist-credentials: false
+      - name: Apply overlay
+        working-directory: work
+        run: ../control/hack/apply-overlay.sh ../control
+      - name: Load .github/ocm/.env
+        run: echo "GO_VERSION=$(grep -E '^GO_VERSION=' work/.github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: work/go.sum
+      - name: Build and verify FIPS binary
+        working-directory: work
+        env:
+          GOFIPS140: certified
+          # Go stamps the main module version from VCS, and release-utils prefers
+          # it over the gitVersion ldflag; without VCS stamping GIT_VERSION wins.
+          GOFLAGS: -buildvcs=false
+          GOTOOLCHAIN: local
+        run: |
+          make cosign GIT_VERSION=v0.0.0-ocm.0
+          .github/ocm/verify-fips.sh cosign
+          mkdir dist
+          cp cosign dist/cosign-linux-amd64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build and smoke-test image
+        working-directory: work
+        run: |
+          docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
+          .github/ocm/smoke-image.sh cosign-smoke v0.0.0-ocm.0
