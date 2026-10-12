@@ -27,13 +27,14 @@ and the `Sync upstream` workflow propagates it to every maintenance branch.
   `overlay/`/`hack/` changes): mirrors new upstream stable tags, creates
   `ocm/vX.Y.Z` for every tag at or above `v3.1.3`, and refreshes the overlay on
   existing maintenance branches.
-- **Renovate** (`.github/renovate.json5`): branch automerge without review.
-  Maintenance branches get weekly non-major Go module updates; `ocm-main` gets
-  action, base-image, Go toolchain and kind updates, which reach every
-  maintenance branch through Sync upstream.
 - **OCM Release** (on every push to `ocm/v*`): runs `OCM CI`, builds and
   verifies the FIPS binaries, pushes a multi-arch image, and creates the GitHub
   release `vX.Y.Z-ocm.N` with provenance attestations.
+- **Renovate** (`.github/renovate.json5`): branch automerge without review.
+  Maintenance branches get weekly Go module updates, direct and indirect (non-major
+  and major in separate groups); `ocm-main` gets action, base-image, Go toolchain,
+  kind and Sigstore e2e service updates, which reach every maintenance branch
+  through Sync upstream.
 
 ## Versioning
 

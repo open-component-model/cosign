@@ -52,6 +52,16 @@
       ],
     },
     {
+      // Sigstore services the e2e runs against (overlay .env pins). Own group so a
+      // failing service bump never holds back action/image updates; shorter age gate
+      // because these are test-only and never shipped.
+      matchBaseBranches: ['ocm-main'],
+      matchDepNames: ['sigstore/fulcio', 'sigstore/rekor', 'sigstore/timestamp-authority', 'sigstore/rekor-tiles'],
+      groupName: 'Sigstore e2e services',
+      groupSlug: 'sigstore-e2e-services',
+      minimumReleaseAge: '7 days',
+    },
+    {
       // Go toolchain: own group, any time (stdlib security fixes).
       matchBaseBranches: ['ocm-main'],
       matchDatasources: ['golang-version'],
@@ -80,7 +90,7 @@
       separateMinorPatch: false,
     },
     {
-      // ... except non-major Go modules (incl. indirect) in one weekly group.
+      // ... except Go modules (direct and indirect): non-major in one weekly group ...
       matchBaseBranches: ['/^ocm\\/v/'],
       matchManagers: ['gomod'],
       matchUpdateTypes: ['minor', 'patch', 'digest'],
@@ -89,6 +99,21 @@
       groupSlug: 'gomod-non-major',
       internalChecksFilter: 'flexible',
       postUpdateOptions: ['gomodTidy'],
+      schedule: [
+        '* * * * 0', // At every minute on Sunday it is allowed to create branches
+      ],
+    },
+    {
+      // ... and majors in a separate weekly group, so a major that needs source
+      // changes (Renovate falls back to a PR) never blocks the non-major group.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['major'],
+      enabled: true,
+      groupName: 'Go modules (major)',
+      groupSlug: 'gomod-major',
+      internalChecksFilter: 'flexible',
+      postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
       schedule: [
         '* * * * 0', // At every minute on Sunday it is allowed to create branches
       ],

@@ -1,11 +1,15 @@
-# Checks Renovate's branch automerge waits on for ocm-main changes.
+# Checks Renovate's branch automerge waits on for ocm-main changes. On ocm-main it also
+# seeds the e2e caches: caches saved on other branches are branch-scoped, those saved on
+# the default branch are readable from every maintenance and renovate branch.
 name: Control CI
 
 on:
   push:
-    branches: ['renovate/**']
+    branches: ['renovate/**', ocm-main]
   pull_request:
     branches: [ocm-main]
+  schedule:
+    - cron: '41 5 * * 1' # weekly, so the seeded caches follow maintenance-branch go.sum changes
   workflow_dispatch: {}
 
 permissions:
@@ -67,3 +71,73 @@ jobs:
         run: |
           docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
           .github/ocm/smoke-image.sh cosign-smoke v0.0.0-ocm.0
+
+  # The overlay's e2e (pinned sigstore services) on the highest maintenance branch.
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: control
+          persist-credentials: false
+      - name: Pick highest maintenance branch
+        run: |
+          ref="$(git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}" 'refs/heads/ocm/v*' | sed 's#.*refs/heads/##' | sort -V | tail -1)"
+          echo "TARGET_REF=${ref:-v3.1.3}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_REF }}
+          path: work
+          persist-credentials: false
+      - name: Apply overlay
+        working-directory: work
+        run: ../control/hack/apply-overlay.sh ../control
+      - name: Load .github/ocm/.env
+        working-directory: work
+        run: |
+          {
+            echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)"
+            echo "CLONE_DIR=${RUNNER_TEMP}/sigstore-services"
+            echo "IMAGES_KEY=$(.github/ocm/e2e.sh key)"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # Same keys as the e2e job of overlay/.github/workflows/ocm-ci.yml.
+      - id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ env.GO_VERSION }}-${{ hashFiles('work/go.sum') }}
+          restore-keys: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ env.GO_VERSION }}-
+      - id: images
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sigstore-images.tar
+          key: ${{ env.IMAGES_KEY }}
+      - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
+      - name: Run end-to-end tests
+        working-directory: work
+        env:
+          GOFIPS140: certified
+          GOTOOLCHAIN: local
+        run: .github/ocm/e2e.sh run "${RUNNER_TEMP}/sigstore-images.tar"
+      - name: Export sigstore service images
+        if: success() && github.ref == 'refs/heads/ocm-main' && steps.images.outputs.cache-hit != 'true'
+        working-directory: work
+        run: .github/ocm/e2e.sh save-images "${RUNNER_TEMP}/sigstore-images.tar"
+      - if: success() && github.ref == 'refs/heads/ocm-main' && steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sigstore-images.tar
+          key: ${{ env.IMAGES_KEY }}
+      - if: success() && github.ref == 'refs/heads/ocm-main' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
