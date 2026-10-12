@@ -30,7 +30,8 @@
   automerge: true, // no review
   automergeType: 'branch', // fast-forward onto base after green CI, auto-rebase, PR only on failure
   separateMinorPatch: true,
-  separateMultipleMajor: true,
+  // Jump straight to the newest major instead of one branch per intermediate major.
+  separateMultipleMajor: false,
   // GitHub Dependabot alerts only cover the default branch.
   osvVulnerabilityAlerts: true,
   vulnerabilityAlerts: {
@@ -93,8 +94,6 @@
       matchManagers: ['gomod'],
       enabled: true,
       separateMinorPatch: false,
-      // Jump straight to the newest major instead of one branch per intermediate major.
-      separateMultipleMajor: false,
       internalChecksFilter: 'flexible',
       postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
       schedule: [
