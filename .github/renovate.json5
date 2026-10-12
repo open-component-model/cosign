@@ -83,25 +83,31 @@
       enabled: false,
     },
     {
-      // Minor and patch share the group branch below. Renovate derives update
-      // types from this option, so it cannot sit in a rule with matchUpdateTypes.
+      // ... except Go modules (direct and indirect, all update types). This must not
+      // use matchUpdateTypes: `enabled` is decided before lookup, when the update type
+      // is still unknown, so a type-scoped re-enable never matches and every module
+      // stays disabled. postUpdateOptions apply per update (gomodUpdateImportPaths
+      // only acts on majors). separateMinorPatch shapes update types, so it cannot sit
+      // in a rule with matchUpdateTypes either.
       matchBaseBranches: ['/^ocm\\/v/'],
       matchManagers: ['gomod'],
-      separateMinorPatch: false,
-    },
-    {
-      // ... except Go modules (direct and indirect): non-major in one weekly group ...
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchUpdateTypes: ['minor', 'patch', 'digest'],
       enabled: true,
-      groupName: 'Go modules (non-major)',
-      groupSlug: 'gomod-non-major',
+      separateMinorPatch: false,
+      // Jump straight to the newest major instead of one branch per intermediate major.
+      separateMultipleMajor: false,
       internalChecksFilter: 'flexible',
-      postUpdateOptions: ['gomodTidy'],
+      postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
       schedule: [
         '* * * * 0', // At every minute on Sunday it is allowed to create branches
       ],
+    },
+    {
+      // Non-major in one weekly group ...
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'Go modules (non-major)',
+      groupSlug: 'gomod-non-major',
     },
     {
       // ... and majors in a separate weekly group, so a major that needs source
@@ -109,14 +115,8 @@
       matchBaseBranches: ['/^ocm\\/v/'],
       matchManagers: ['gomod'],
       matchUpdateTypes: ['major'],
-      enabled: true,
       groupName: 'Go modules (major)',
       groupSlug: 'gomod-major',
-      internalChecksFilter: 'flexible',
-      postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
-      schedule: [
-        '* * * * 0', // At every minute on Sunday it is allowed to create branches
-      ],
     },
     {
       // The Go version comes from overlay GO_VERSION, never from go.mod directives.
