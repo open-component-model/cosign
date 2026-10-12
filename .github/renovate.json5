@@ -130,6 +130,16 @@
       enabled: false,
     },
     {
+      // cosign's own ecosystem moves in lockstep with cosign source: rekor v1.5.4 added
+      // CreateLogEntryContext to its generated client (cosign's mock no longer compiles),
+      // timestamp-authority v2.1.3 broke the TSA e2e tests. Newer versions arrive with
+      // new upstream cosign tags, i.e. new maintenance branches.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchPackageNames: ['github.com/sigstore/**'],
+      enabled: false,
+    },
+    {
       // The Go version comes from overlay GO_VERSION, never from go.mod directives.
       matchBaseBranches: ['/^ocm\\/v/'],
       matchManagers: ['gomod'],
