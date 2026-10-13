@@ -1,7 +1,7 @@
 name: Renovate
 on:
   schedule:
-    - cron: '0 */4 * * *' # Every 4 hours, so branch-automerge chains finish within a day
+    - cron: '0 * * * *' # Hourly: with one update branch at a time, each run merges one and opens the next
   workflow_dispatch:
     inputs:
       repoCache:
@@ -22,6 +22,11 @@ on:
     paths:
       - .github/renovate.json5
       - .github/workflows/renovate.yml
+
+# Live runs never overlap (hourly schedule + pushes); PR dry-runs are independent.
+concurrency:
+  group: renovate-${{ github.event_name == 'pull_request' && github.ref || 'live' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

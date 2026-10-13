@@ -30,11 +30,12 @@ and the `Sync upstream` workflow propagates it to every maintenance branch.
 - **OCM Release** (on every push to `ocm/v*`): runs `OCM CI`, builds and
   verifies the FIPS binaries, pushes a multi-arch image, and creates the GitHub
   release `vX.Y.Z-ocm.N` with provenance attestations.
-- **Renovate** (`.github/renovate.json5`): branch automerge without review.
-  Maintenance branches get weekly Go module updates, direct and indirect (non-major
-  and major in separate groups); `ocm-main` gets action, base-image, Go toolchain,
-  kind and Sigstore e2e service updates, which reach every maintenance branch
-  through Sync upstream.
+- **Renovate** (`.github/renovate.json5`): branch automerge without review, no
+  release-age gate, one update branch at a time (security fixes excepted).
+  Maintenance branches get non-major Go module updates, direct and indirect, one
+  library (source repository) per branch; `ocm-main` gets action, base-image, Go
+  toolchain, kind and Sigstore e2e service updates, which reach every maintenance
+  branch through Sync upstream.
 
 ## Versioning
 

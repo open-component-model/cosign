@@ -12,11 +12,7 @@
   // ocm-main (overlay tooling) plus every maintenance branch ocm/vX.Y.Z.
   baseBranchPatterns: ['$default', '/^ocm\\/v\\d+\\.\\d+\\.\\d+$/'],
   updateNotScheduled: true, // Update branches that have already been created
-  minimumReleaseAge: '28 days',
-  internalChecksFilter: 'strict',
   prCreation: 'not-pending',
-  // No internalChecksAsSuccess (unlike OCM): OCM CI / Control CI run on renovate/**
-  // branches, and counting internal checks as success could automerge before CI reports.
   lockFileMaintenance: {
     enabled: false,
   },
@@ -25,6 +21,10 @@
   gitIgnoredAuthors: [
     '125909804+ocmbot[bot]@users.noreply.github.com',
   ],
+  // One update branch at a time across the repo: the next group starts only after the
+  // previous one merged (or failed into a PR), so a break is attributable to one library.
+  // Security updates ignore this limit. prPriority below decides which group goes next.
+  branchConcurrentLimit: 1,
   prConcurrentLimit: 0,
   prHourlyLimit: 0,
   automerge: true, // no review
@@ -47,20 +47,18 @@
       groupName: 'OCM tooling',
       groupSlug: 'ocm-tooling',
       separateMinorPatch: false,
-      internalChecksFilter: 'flexible',
+      prPriority: 5,
       schedule: [
         '* * * * 0', // At every minute on Sunday it is allowed to create branches
       ],
     },
     {
       // Sigstore services the e2e runs against (overlay .env pins). Own group so a
-      // failing service bump never holds back action/image updates; shorter age gate
-      // because these are test-only and never shipped.
+      // failing service bump never holds back action/image updates.
       matchBaseBranches: ['ocm-main'],
       matchDepNames: ['sigstore/fulcio', 'sigstore/rekor', 'sigstore/timestamp-authority', 'sigstore/rekor-tiles'],
       groupName: 'Sigstore e2e services',
       groupSlug: 'sigstore-e2e-services',
-      minimumReleaseAge: '7 days',
     },
     {
       // Go toolchain: own group, any time (stdlib security fixes).
@@ -68,14 +66,8 @@
       matchDatasources: ['golang-version'],
       groupName: 'Go toolchain',
       groupSlug: 'go-toolchain',
+      prPriority: 10,
       schedule: ['at any time'],
-    },
-    {
-      // Go patch releases skip the release-age gate.
-      matchBaseBranches: ['ocm-main'],
-      matchDatasources: ['golang-version'],
-      matchUpdateTypes: ['patch'],
-      minimumReleaseAge: null,
     },
     {
       // Maintenance branches: everything off. Overlay files there are written
@@ -93,19 +85,11 @@
       matchManagers: ['gomod'],
       enabled: true,
       separateMinorPatch: false,
-      internalChecksFilter: 'flexible',
       postUpdateOptions: ['gomodTidy'],
-      schedule: [
-        '* * * * 0', // At every minute on Sunday it is allowed to create branches
-      ],
-    },
-    {
-      // All non-major updates in one weekly group.
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchUpdateTypes: ['minor', 'patch', 'digest'],
-      groupName: 'Go modules (non-major)',
-      groupSlug: 'gomod-non-major',
+      // One group per library (source repository, e.g. all aws-sdk-go-v2 modules
+      // together); branchConcurrentLimit serializes them.
+      groupName: '{{#if sourceRepo}}{{{sourceRepo}}}{{else}}{{{depName}}}{{/if}}',
+      groupSlug: 'go-{{#if sourceRepo}}{{{replace "/" "-" sourceRepo}}}{{else}}{{{replace "/" "-" depName}}}{{/if}}',
     },
     {
       // No majors: a Go major is a new module path. Indirect majors are no-ops (importers
@@ -153,21 +137,6 @@
       matchManagers: ['gomod'],
       matchDepNames: ['github.com/ThalesIgnite/crypto11'],
       enabled: false,
-    },
-    {
-      // Renovate has no release timestamp for these types and
-      // minimumReleaseAge requires that to work, otherwise, it will just never update them.
-      matchUpdateTypes: [
-        'lockFileMaintenance',
-        'replacement',
-        'pin',
-        'pinDigest',
-        'digest',
-        'bump',
-        'lockfileUpdate',
-        'rollback',
-      ],
-      minimumReleaseAge: null,
     },
   ],
   customManagers: [
