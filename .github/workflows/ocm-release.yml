@@ -15,18 +15,13 @@ concurrency:
 permissions: {}
 
 env:
-  GOFIPS140: certified
-  GOTOOLCHAIN: local
   IMAGE: ghcr.io/open-component-model/cosign
 
+# version -> ci (tests + all binaries, built once) -> image -> release. Already released
+# commits skip everything after version.
 jobs:
-  ci:
-    permissions:
-      contents: read
-    uses: ./.github/workflows/ocm-ci.yml
-
   version:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     permissions:
       contents: read
     outputs:
@@ -77,57 +72,18 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "version=${VERSION} image-tag=${IMAGE_TAG} latest=${LATEST}"
 
-  # Runs alongside ci; image and release (the only publishing jobs) wait for ci.
-  build:
+  ci:
     needs: [version]
     if: needs.version.outputs.skip != 'true'
-    runs-on: ubuntu-24.04
     permissions:
       contents: read
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Load .github/ocm/.env
-        run: echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-build-linux-${{ matrix.goarch }}-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-build-linux-${{ matrix.goarch }}-${{ env.GO_VERSION }}-
-      - name: Build FIPS binary
-        env:
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-          # Go stamps the main module version from VCS, and release-utils prefers
-          # it over the gitVersion ldflag; without VCS stamping GIT_VERSION wins.
-          GOFLAGS: -buildvcs=false
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          # The Makefile forces CGO_ENABLED=0 and -trimpath.
-          make cosign GIT_VERSION="$VERSION"
-          mkdir -p dist
-          mv cosign "dist/cosign-linux-${GOARCH}"
-      - name: Verify FIPS build info
-        run: .github/ocm/verify-fips.sh "dist/cosign-linux-${{ matrix.goarch }}"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: bin-linux-${{ matrix.goarch }}
-          path: dist/cosign-linux-${{ matrix.goarch }}
-          if-no-files-found: error
+    uses: ./.github/workflows/ocm-ci.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
   image:
-    needs: [ci, version, build]
-    runs-on: ubuntu-24.04
+    needs: [ci, version]
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
       packages: write
@@ -147,9 +103,8 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: bin-linux-*
+          name: binaries
           path: dist
-          merge-multiple: true
       - run: chmod +x dist/cosign-*
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -159,7 +114,8 @@ jobs:
           password: ${{ github.token }}
       - name: Smoke-test image
         run: |
-          docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
+          # Native platform of this arm64 runner.
+          docker buildx build --platform linux/arm64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
           .github/ocm/smoke-image.sh cosign-smoke "$VERSION"
       - id: push
         name: Build and push multi-arch image
@@ -186,8 +142,8 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [ci, version, build, image]
-    runs-on: ubuntu-24.04
+    needs: [ci, version, image]
+    runs-on: ubuntu-slim
     permissions:
       contents: write
       id-token: write
@@ -199,6 +155,7 @@ jobs:
       IMAGE_TAG: ${{ needs.version.outputs.image-tag }}
       LATEST: ${{ needs.version.outputs.latest }}
       DIGEST: ${{ needs.image.outputs.digest }}
+      FIPS_MODULE: ${{ needs.ci.outputs.fips-module }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -206,19 +163,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - name: Load .github/ocm/.env
-        run: |
-          for k in GO_VERSION GIT_CLIFF_VERSION; do
-            echo "${k}=$(grep -E "^${k}=" .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
-          done
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
+        run: echo "GIT_CLIFF_VERSION=$(grep -E '^GIT_CLIFF_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: bin-*
+          name: binaries
           path: dist
-          merge-multiple: true
       - name: Checksums
         run: |
           chmod +x dist/cosign-*
@@ -244,7 +193,7 @@ jobs:
             echo
             echo "---"
             echo
-            echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module $(cat "$(go env GOROOT)/lib/fips140/certified.txt") (GOFIPS140=certified, CGO disabled)."
+            echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module ${FIPS_MODULE} (GOFIPS140=certified, CGO disabled)."
             echo
             echo "Image: \`${IMAGE}:${IMAGE_TAG}@${DIGEST}\`"
           } > notes.md
