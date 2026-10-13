@@ -14,8 +14,8 @@ require (
 	github.com/digitorus/timestamp v0.0.0-20260914073129-b4b58b92aa51
 	github.com/dustin/go-humanize v1.1.0
 	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/go-openapi/runtime v0.33.2
-	github.com/go-openapi/strfmt v0.27.2
+	github.com/go-openapi/runtime v0.33.3
+	github.com/go-openapi/strfmt v0.27.3
 	github.com/go-openapi/swag/conv v0.29.2
 	github.com/go-piv/piv-go/v2 v2.6.0
 	github.com/google/certificate-transparency-go v1.3.3
@@ -153,12 +153,12 @@ require (
 	github.com/go-chi/chi/v5 v5.3.2 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/analysis v1.0.0 // indirect
+	github.com/go-openapi/analysis v1.0.1 // indirect
 	github.com/go-openapi/errors v0.22.9 // indirect
-	github.com/go-openapi/jsonpointer v1.0.1 // indirect
-	github.com/go-openapi/jsonreference v1.0.2 // indirect
+	github.com/go-openapi/jsonpointer v1.0.2 // indirect
+	github.com/go-openapi/jsonreference v1.0.3 // indirect
 	github.com/go-openapi/loads v0.25.3 // indirect
-	github.com/go-openapi/runtime/server-middleware v0.33.2 // indirect
+	github.com/go-openapi/runtime/server-middleware v0.33.3 // indirect
 	github.com/go-openapi/spec v1.0.1 // indirect
 	github.com/go-openapi/swag v0.29.2 // indirect
 	github.com/go-openapi/swag/cmdutils v0.29.2 // indirect
