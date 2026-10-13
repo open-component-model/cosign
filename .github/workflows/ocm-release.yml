@@ -32,9 +32,9 @@ jobs:
     outputs:
       base: ${{ steps.v.outputs.base }}
       version: ${{ steps.v.outputs.version }}
+      image-tag: ${{ steps.v.outputs.image-tag }}
       skip: ${{ steps.v.outputs.skip }}
       latest: ${{ steps.v.outputs.latest }}
-      prev: ${{ steps.v.outputs.prev }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,15 +52,17 @@ jobs:
           fi
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$(git tag --points-at HEAD --list "${BASE}-ocm.*")" ]; then
-            echo "HEAD is already released: $(git tag --points-at HEAD --list "${BASE}-ocm.*" | tr '\n' ' ')"
+          # vX.Y.Z+ocm.N: semver build metadata, i.e. a build of upstream vX.Y.Z.
+          if [ -n "$(git tag --points-at HEAD --list "${BASE}+ocm.*")" ]; then
+            echo "HEAD is already released: $(git tag --points-at HEAD --list "${BASE}+ocm.*" | tr '\n' ' ')"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          last="$(git tag --list "${BASE}-ocm.*" | sed "s/^${BASE}-ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
-          VERSION="${BASE}-ocm.$(( ${last:-0} + 1 ))"
-          if [ -n "$last" ]; then PREV="${BASE}-ocm.${last}"; else PREV="${BASE}"; fi
+          last="$(git tag --list "${BASE}+ocm.*" | sed "s/^${BASE}+ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
+          VERSION="${BASE}+ocm.$(( ${last:-0} + 1 ))"
+          # OCI tags cannot contain '+'; '_' is the usual substitute (as Helm does).
+          IMAGE_TAG="${VERSION/+/_}"
 
           highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
           if [ "$BASE" = "$highest" ]; then LATEST=true; else LATEST=false; fi
@@ -68,10 +70,10 @@ jobs:
           {
             echo "skip=false"
             echo "version=${VERSION}"
-            echo "prev=${PREV}"
+            echo "image-tag=${IMAGE_TAG}"
             echo "latest=${LATEST}"
           } >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION} prev=${PREV} latest=${LATEST}"
+          echo "version=${VERSION} image-tag=${IMAGE_TAG} latest=${LATEST}"
 
   # Runs alongside ci; image and release (the only publishing jobs) wait for ci.
   build:
@@ -135,6 +137,7 @@ jobs:
     env:
       BASE: ${{ needs.version.outputs.base }}
       VERSION: ${{ needs.version.outputs.version }}
+      IMAGE_TAG: ${{ needs.version.outputs.image-tag }}
       LATEST: ${{ needs.version.outputs.latest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,7 +163,8 @@ jobs:
         name: Build and push multi-arch image
         run: |
           set -euo pipefail
-          tags=(-t "${IMAGE}:${VERSION}" -t "${IMAGE}:${BASE}-ocm")
+          # vX.Y.Z_ocm.N is immutable; vX.Y.Z moves to the newest build of upstream vX.Y.Z.
+          tags=(-t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:${BASE}")
           if [ "$LATEST" = true ]; then tags+=(-t "${IMAGE}:latest"); fi
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -190,7 +194,7 @@ jobs:
     env:
       BASE: ${{ needs.version.outputs.base }}
       VERSION: ${{ needs.version.outputs.version }}
-      PREV: ${{ needs.version.outputs.prev }}
+      IMAGE_TAG: ${{ needs.version.outputs.image-tag }}
       LATEST: ${{ needs.version.outputs.latest }}
       DIGEST: ${{ needs.image.outputs.digest }}
     steps:
@@ -200,7 +204,10 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - name: Load .github/ocm/.env
-        run: echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+        run: |
+          for k in GO_VERSION GIT_CLIFF_VERSION; do
+            echo "${k}=$(grep -E "^${k}=" .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+          done
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -218,17 +225,26 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: dist/cosign-*
+      # Changelog of everything on this branch since the upstream fork point, not
+      # since the previous OCM build (see .github/ocm/cliff.toml).
+      - uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          version: ${{ env.GIT_CLIFF_VERSION }}
+          config: .github/ocm/cliff.toml
+          args: --tag ${{ env.VERSION }} ${{ env.BASE }}..HEAD
+        env:
+          OUTPUT: changelog.md
       - name: Release notes
         run: |
           set -euo pipefail
           {
+            cat changelog.md
+            echo
+            echo "---"
+            echo
             echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module $(cat "$(go env GOROOT)/lib/fips140/certified.txt") (GOFIPS140=certified, CGO disabled)."
             echo
-            echo "Image: \`${IMAGE}:${VERSION}@${DIGEST}\`"
-            echo
-            echo "Changes since ${PREV}:"
-            echo
-            git log --no-merges --format='- %s (%h)' "${PREV}..HEAD"
+            echo "Image: \`${IMAGE}:${IMAGE_TAG}@${DIGEST}\`"
           } > notes.md
           cat notes.md
       - name: Create GitHub release
