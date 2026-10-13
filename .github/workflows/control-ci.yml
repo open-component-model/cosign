@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,7 +28,7 @@ jobs:
         run: npx --yes --package renovate -- renovate-config-validator --strict .github/renovate.json5
 
   overlay-smoke:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,17 +64,19 @@ jobs:
           make cosign GIT_VERSION=v0.0.0+ocm.0
           .github/ocm/verify-fips.sh cosign
           mkdir dist
-          cp cosign dist/cosign-linux-amd64
+          cp cosign "dist/cosign-linux-$(go env GOARCH)"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Build and smoke-test image
         working-directory: work
         run: |
-          docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
+          docker buildx build --platform linux/arm64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
           .github/ocm/smoke-image.sh cosign-smoke v0.0.0+ocm.0
 
   # The overlay's e2e (pinned sigstore services) on the highest maintenance branch.
+  # amd64 like OCM CI's e2e: rekor's MySQL image is amd64-only and the caches seeded
+  # here are restored there.
   e2e:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
