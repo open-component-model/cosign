@@ -1,7 +1,7 @@
 name: Renovate
 on:
   schedule:
-    - cron: '0 * * * *' # Hourly: with one update branch at a time, each run merges one and opens the next
+    - cron: '0 2,14 * * *' # Every 12h: each run merges the green batches from the previous run and opens the next
   workflow_dispatch:
     inputs:
       repoCache:
@@ -23,7 +23,7 @@ on:
       - .github/renovate.json5
       - .github/workflows/renovate.yml
 
-# Live runs never overlap (hourly schedule + pushes); PR dry-runs are independent.
+# Live runs never overlap (12h schedule + pushes); PR dry-runs are independent.
 concurrency:
   group: renovate-${{ github.event_name == 'pull_request' && github.ref || 'live' }}
   cancel-in-progress: false

@@ -3,8 +3,7 @@
 # refreshes the overlay on existing maintenance branches.
 #
 # Required env: GH_APP_TOKEN, MIN_TAG, CONTROL_DIR, CONTROL_SHA. Optional: EXTRA_TAG.
-# Pushes must use the app token: GITHUB_TOKEN pushes neither trigger OCM Release
-# nor may they touch .github/workflows.
+# Pushes must use the app token: GITHUB_TOKEN may not touch .github/workflows, and only ocmbot may push to ocm/v*.
 set -euo pipefail
 
 : "${GH_APP_TOKEN:?}" "${MIN_TAG:?}" "${CONTROL_DIR:?}" "${CONTROL_SHA:?}"

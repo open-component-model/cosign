@@ -1,0 +1,37 @@
+# OCM Release lives on the maintenance branches, where `schedule` never fires (GitHub
+# runs scheduled workflows only from the default branch). This dispatches it once a
+# day on every ocm/v* branch; its version job releases only branches whose tree
+# differs from their last release. Manual run: dispatch this workflow (all branches)
+# or OCM Release itself on one branch.
+name: Release schedule
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # after the 02:00 Renovate run merged its batch
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-schedule
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-slim
+    steps:
+      - name: Dispatch OCM Release on every maintenance branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t branches < <(git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}" 'refs/heads/ocm/v*' | sed 's#.*refs/heads/##' | sort -V)
+          if [ "${#branches[@]}" -eq 0 ]; then
+            echo "no maintenance branches"
+            exit 0
+          fi
+          for b in "${branches[@]}"; do
+            echo "dispatching OCM Release on ${b}"
+            gh workflow run ocm-release.yml --repo "$GITHUB_REPOSITORY" --ref "$b"
+          done

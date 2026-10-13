@@ -30,8 +30,7 @@ jobs:
       name: automation
       deployment: false
     steps:
-      # Pushes with GITHUB_TOKEN neither trigger OCM Release nor may touch
-      # .github/workflows, so the ocmbot app token is mandatory.
+      # GITHUB_TOKEN may not touch .github/workflows and only ocmbot may push to ocm/v* (maintenance-branches ruleset), so the ocmbot app token is mandatory.
       - id: token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:

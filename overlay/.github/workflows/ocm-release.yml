@@ -1,13 +1,11 @@
 # Managed by ocm-main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
 name: OCM Release
 
+# Dispatched daily by Release schedule on ocm-main (schedule triggers only fire on the default branch) or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
 on:
-  push:
-    branches: ['ocm/v*']
   workflow_dispatch: {}
 
-# Serialize releases per branch; a superseded pending run is dropped because the
-# newer commit contains its changes.
+# Serialize releases per branch: a queued second dispatch finds no diff to the release the first one created and skips.
 concurrency:
   group: ocm-release-${{ github.ref_name }}
   cancel-in-progress: false
@@ -17,8 +15,7 @@ permissions: {}
 env:
   IMAGE: ghcr.io/open-component-model/cosign
 
-# version -> ci (tests + all binaries, built once) -> image -> release. Already released
-# commits skip everything after version.
+# version -> ci (tests + all binaries, built once) -> image -> release. A branch whose tree equals its last release skips everything after version.
 jobs:
   version:
     runs-on: ubuntu-slim
@@ -47,16 +44,24 @@ jobs:
           fi
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
-          # vX.Y.Z+ocm.N: semver build metadata, i.e. a build of upstream vX.Y.Z.
-          if [ -n "$(git tag --points-at HEAD --list "${BASE}+ocm.*")" ]; then
-            echo "HEAD is already released: $(git tag --points-at HEAD --list "${BASE}+ocm.*" | tr '\n' ' ')"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           # N continues across the earlier -ocm.N git tags: images are tagged vX.Y.Z-ocm.N
           # in both schemes, so reusing an N would overwrite an existing image tag.
           last="$(git tag --list "${BASE}+ocm.*" "${BASE}-ocm.*" | sed -E "s/^${BASE}[+-]ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
+
+          # Release only if the tree differs from the last release (new commits that change
+          # nothing, e.g. a revert pair, do not count).
+          if [ -n "$last" ]; then
+            last_tag="$(git tag --list "${BASE}+ocm.${last}" "${BASE}-ocm.${last}" | head -1)"
+            if git diff --quiet "$last_tag" HEAD; then
+              echo "No changes since ${last_tag}; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Changes since ${last_tag}:"
+            git diff --stat "$last_tag" HEAD
+          fi
+
+          # vX.Y.Z+ocm.N: semver build metadata, i.e. a build of upstream vX.Y.Z.
           VERSION="${BASE}+ocm.$(( ${last:-0} + 1 ))"
           # OCI tags cannot contain '+'; images use vX.Y.Z-ocm.N instead.
           IMAGE_TAG="${VERSION/+/-}"

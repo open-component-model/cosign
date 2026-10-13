@@ -9,6 +9,10 @@
     ':dependencyDashboard',
     ':rebaseStalePrs',
   ],
+  // The explicit groups below are the only ones. config:recommended's group presets
+  // (e.g. kubernetes and opentelemetry monorepos) would otherwise split the
+  // maintenance-branch Go batch, depending on where presets land relative to these rules.
+  ignorePresets: ['group:monorepos', 'group:recommended'],
   // ocm-main (overlay tooling) plus every maintenance branch ocm/vX.Y.Z.
   baseBranchPatterns: ['$default', '/^ocm\\/v\\d+\\.\\d+\\.\\d+$/'],
   updateNotScheduled: true, // Update branches that have already been created
@@ -21,10 +25,11 @@
   gitIgnoredAuthors: [
     '125909804+ocmbot[bot]@users.noreply.github.com',
   ],
-  // One update branch at a time across the repo: the next group starts only after the
-  // previous one merged (or failed into a PR), so a break is attributable to one library.
-  // Security updates ignore this limit. prPriority below decides which group goes next.
-  branchConcurrentLimit: 1,
+  // No concurrent-branch limit (0). Maintenance branches get one Go batch each (see
+  // the gomod rule), so they never compete with each other's rebases. Renovate automerges
+  // at most two branches per run (it restarts once after an automerge); prPriority
+  // below decides which go first.
+  branchConcurrentLimit: 0,
   prConcurrentLimit: 0,
   prHourlyLimit: 0,
   automerge: true, // no review
@@ -105,151 +110,11 @@
       enabled: true,
       separateMinorPatch: false,
       postUpdateOptions: ['gomodTidy'],
-      // One group per library (source repository, e.g. all aws-sdk-go-v2 modules
-      // together); branchConcurrentLimit serializes them.
-      groupName: '{{#if sourceRepo}}{{{sourceRepo}}}{{else}}{{{depName}}}{{/if}}',
-      groupSlug: 'go-{{#if sourceRepo}}{{{replace "/" "-" sourceRepo}}}{{else}}{{{replace "/" "-" depName}}}{{/if}}',
-    },
-    // Library families on maintenance branches (after the per-repository fallback, so
-    // these win). Modeled on OCM's groups; every module not listed keeps its own branch.
-    {
-      // aws-sdk-go-v2 and smithy-go release together
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/aws/{/,}**'],
-      groupName: 'AWS SDK',
-      groupSlug: 'go-aws',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/Azure/{/,}**', 'github.com/AzureAD/{/,}**'],
-      groupName: 'Azure SDK',
-      groupSlug: 'go-azure',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/alibabacloud-go/{/,}**', 'github.com/aliyun/{/,}**', 'github.com/AliyunContainerService/{/,}**'],
-      groupName: 'Alibaba Cloud SDK',
-      groupSlug: 'go-alibaba-cloud',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['cloud.google.com/go{/,}**', 'github.com/googleapis/{/,}**', 'google.golang.org/api{/,}**'],
-      groupName: 'Google Cloud SDK',
-      groupSlug: 'go-google-cloud',
-    },
-    {
-      // grpc, protobuf, genproto (as in OCM)
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['google.golang.org/{/,}**', '!google.golang.org/api{/,}**', 'github.com/grpc-ecosystem/{/,}**'],
-      groupName: 'Google Golang Repositories',
-      groupSlug: 'go-google-golang-repos',
-    },
-    {
-      // as in OCM
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['golang.org/x/{/,}**'],
-      groupName: 'Golang X Repositories',
-      groupSlug: 'go-golang-x-repos',
-    },
-    {
-      // as in OCM; apimachinery/kube-openapi/structured-merge-diff must move together
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['k8s.io/{/,}**', 'sigs.k8s.io/{/,}**'],
-      groupName: 'Kubernetes dependencies',
-      groupSlug: 'go-kubernetes-deps',
-    },
-    {
-      // as in OCM
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/docker/{/,}**', 'github.com/moby/{/,}**'],
-      groupName: 'Docker dependencies',
-      groupSlug: 'go-docker-deps',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['go.opentelemetry.io/{/,}**'],
-      groupName: 'OpenTelemetry',
-      groupSlug: 'go-opentelemetry',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/go-openapi/{/,}**'],
-      groupName: 'go-openapi',
-      groupSlug: 'go-go-openapi',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/google/go-containerregistry{/,}**', 'github.com/opencontainers/{/,}**', 'github.com/containerd/{/,}**'],
-      groupName: 'OCI / container registry',
-      groupSlug: 'go-oci',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/lestrrat-go/{/,}**', 'github.com/go-jose/{/,}**', 'github.com/golang-jwt/{/,}**', 'github.com/coreos/go-oidc{/,}**'],
-      groupName: 'JOSE / JWT',
-      groupSlug: 'go-jose-jwt',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/theupdateframework/{/,}**', 'github.com/in-toto/{/,}**', 'github.com/secure-systems-lab/{/,}**', 'github.com/transparency-dev/{/,}**', 'github.com/google/certificate-transparency-go{/,}**', 'github.com/google/trillian{/,}**'],
-      groupName: 'TUF / in-toto / transparency',
-      groupSlug: 'go-supply-chain',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/tink-crypto/{/,}**'],
-      groupName: 'Tink',
-      groupSlug: 'go-tink',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/hashicorp/{/,}**'],
-      groupName: 'HashiCorp',
-      groupSlug: 'go-hashicorp',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/prometheus/{/,}**'],
-      groupName: 'Prometheus',
-      groupSlug: 'go-prometheus',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/buildkite/{/,}**'],
-      groupName: 'Buildkite',
-      groupSlug: 'go-buildkite',
-    },
-    {
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['cuelang.org/{/,}**', 'cuelabs.dev/{/,}**'],
-      groupName: 'CUE',
-      groupSlug: 'go-cue',
-    },
-    {
-      // as in OCM
-      matchBaseBranches: ['/^ocm\\/v/'],
-      matchManagers: ['gomod'],
-      matchPackageNames: ['github.com/spf13/{/,}**'],
-      groupName: 'spf13 repositories',
-      groupSlug: 'go-spf13',
+      // Every Go module update of a maintenance branch in one branch: one CI run and one
+      // fast-forward merge per Renovate run. The commit body lists every update.
+      groupName: 'Go modules',
+      groupSlug: 'go-modules',
+      commitBodyTable: true,
     },
     {
       // No majors: a Go major is a new module path. Indirect majors are no-ops (importers
