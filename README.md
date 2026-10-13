@@ -49,8 +49,8 @@ to `ocm/vX.Y.Z`. `+ocm.N` is semver build metadata: an OCM build of upstream
 
 - Release assets: `cosign-linux-amd64`, `cosign-linux-arm64`, `cosign_checksums.txt`
   (same names and format as upstream).
-- Image: `ghcr.io/open-component-model/cosign:vX.Y.Z_ocm.N` (OCI tags cannot contain
-  `+`, so it becomes `_`), moving tags `vX.Y.Z` (newest build of that release) and
+- Image: `ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N` (OCI tags cannot contain
+  `+`, so it becomes `-`), moving tags `vX.Y.Z` (newest build of that release) and
   `latest` (highest maintenance branch). Scratch-based: the
   binary, a CA bundle, `/tmp` and `$HOME=/home/nonroot`; runs as `65532:65532`.
 

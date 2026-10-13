@@ -59,10 +59,12 @@ jobs:
             exit 0
           fi
 
-          last="$(git tag --list "${BASE}+ocm.*" | sed "s/^${BASE}+ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
+          # N continues across the earlier -ocm.N git tags: images are tagged vX.Y.Z-ocm.N
+          # in both schemes, so reusing an N would overwrite an existing image tag.
+          last="$(git tag --list "${BASE}+ocm.*" "${BASE}-ocm.*" | sed -E "s/^${BASE}[+-]ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
           VERSION="${BASE}+ocm.$(( ${last:-0} + 1 ))"
-          # OCI tags cannot contain '+'; '_' is the usual substitute (as Helm does).
-          IMAGE_TAG="${VERSION/+/_}"
+          # OCI tags cannot contain '+'; images use vX.Y.Z-ocm.N instead.
+          IMAGE_TAG="${VERSION/+/-}"
 
           highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
           if [ "$BASE" = "$highest" ]; then LATEST=true; else LATEST=false; fi
@@ -163,7 +165,7 @@ jobs:
         name: Build and push multi-arch image
         run: |
           set -euo pipefail
-          # vX.Y.Z_ocm.N is immutable; vX.Y.Z moves to the newest build of upstream vX.Y.Z.
+          # vX.Y.Z-ocm.N is immutable; vX.Y.Z moves to the newest build of upstream vX.Y.Z.
           tags=(-t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:${BASE}")
           if [ "$LATEST" = true ]; then tags+=(-t "${IMAGE}:latest"); fi
           docker buildx build \
