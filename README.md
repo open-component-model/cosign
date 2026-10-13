@@ -13,7 +13,7 @@ never modified.
 | `ocm-main` (default) | Automation only: this README, Renovate, the sync job, and `overlay/` |
 | tags `vX.Y.Z` | Mirrors of every upstream stable tag (hourly, never overwritten) |
 | `ocm/vX.Y.Z` | Maintenance branch = upstream tag `vX.Y.Z` + one overlay commit + dependency updates |
-| tags `vX.Y.Z-ocm.N` | Releases cut from `ocm/vX.Y.Z` |
+| tags `vX.Y.Z+ocm.N` | Releases cut from `ocm/vX.Y.Z` |
 
 `overlay/` is copied onto every maintenance branch: it replaces upstream's
 workflows and Dependabot config with `OCM CI` and `OCM Release`, and adds
@@ -29,7 +29,9 @@ and the `Sync upstream` workflow propagates it to every maintenance branch.
   existing maintenance branches.
 - **OCM Release** (on every push to `ocm/v*`): runs `OCM CI`, builds and
   verifies the FIPS binaries, pushes a multi-arch image, and creates the GitHub
-  release `vX.Y.Z-ocm.N` with provenance attestations.
+  release `vX.Y.Z+ocm.N` with provenance attestations. Release notes are generated
+  by git-cliff (`.github/ocm/cliff.toml`) and always list every change since the
+  upstream tag `vX.Y.Z` the branch forked from.
 - **Renovate** (`.github/renovate.json5`): branch automerge without review, no
   release-age gate, one update branch at a time (security fixes excepted).
   Maintenance branches get non-major Go module updates, direct and indirect, one
@@ -39,15 +41,17 @@ and the `Sync upstream` workflow propagates it to every maintenance branch.
 
 ## Versioning
 
-`vX.Y.Z-ocm.N`: `vX.Y.Z` is the upstream release, `N` increments on every push
-to `ocm/vX.Y.Z`. As a semver pre-release it sorts below `vX.Y.Z`.
+`vX.Y.Z+ocm.N`: `vX.Y.Z` is the upstream release, `N` increments on every push
+to `ocm/vX.Y.Z`. `+ocm.N` is semver build metadata: an OCM build of upstream
+`vX.Y.Z`, with the same precedence as `vX.Y.Z`.
 
 ## Artifacts
 
 - Release assets: `cosign-linux-amd64`, `cosign-linux-arm64`, `cosign_checksums.txt`
   (same names and format as upstream).
-- Image: `ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N`, moving tags
-  `vX.Y.Z-ocm` and `latest` (highest maintenance branch). Scratch-based: the
+- Image: `ghcr.io/open-component-model/cosign:vX.Y.Z_ocm.N` (OCI tags cannot contain
+  `+`, so it becomes `_`), moving tags `vX.Y.Z` (newest build of that release) and
+  `latest` (highest maintenance branch). Scratch-based: the
   binary, a CA bundle, `/tmp` and `$HOME=/home/nonroot`; runs as `65532:65532`.
 
 Verify a download:

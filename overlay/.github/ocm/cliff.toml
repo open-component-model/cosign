@@ -1,0 +1,35 @@
+# git-cliff config for OCM release notes: every change on ocm/vX.Y.Z since the
+# upstream tag vX.Y.Z (the fork point), in one section.
+# Run as: git cliff --config .github/ocm/cliff.toml --tag "$VERSION" "$BASE..HEAD"
+
+[changelog]
+header = ""
+body = """
+## Changes since upstream [{{ get_env(name="BASE") }}](https://github.com/sigstore/cosign/releases/tag/{{ get_env(name="BASE") }})
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | upper_first | trim }} ([{{ commit.id | truncate(length=8, end="") }}](https://github.com/open-component-model/cosign/commit/{{ commit.id }}))\
+{% endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+# Only upstream stable tags delimit releases, so the +ocm.N tags never split the
+# range: the notes always cover everything since the fork point.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+topo_order = true
+sort_commits = "oldest"
+commit_parsers = [
+  { message = "\\[security\\]", group = "<!-- 0 -->Security" },
+  { message = "^fix\\(deps\\)|^chore\\(deps\\)|^build\\(deps\\)", group = "<!-- 1 -->Dependencies" },
+  { message = "^feat", group = "<!-- 2 -->Features" },
+  { message = "^fix", group = "<!-- 3 -->Fixes" },
+  { message = "OCM overlay", group = "<!-- 4 -->OCM build automation" },
+  { message = ".*", group = "<!-- 5 -->Other" },
+]

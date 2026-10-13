@@ -61,7 +61,7 @@ jobs:
           GOFLAGS: -buildvcs=false
           GOTOOLCHAIN: local
         run: |
-          make cosign GIT_VERSION=v0.0.0-ocm.0
+          make cosign GIT_VERSION=v0.0.0+ocm.0
           .github/ocm/verify-fips.sh cosign
           mkdir dist
           cp cosign dist/cosign-linux-amd64
@@ -70,7 +70,7 @@ jobs:
         working-directory: work
         run: |
           docker buildx build --platform linux/amd64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
-          .github/ocm/smoke-image.sh cosign-smoke v0.0.0-ocm.0
+          .github/ocm/smoke-image.sh cosign-smoke v0.0.0+ocm.0
 
   # The overlay's e2e (pinned sigstore services) on the highest maintenance branch.
   e2e:
