@@ -56,7 +56,7 @@ require (
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/term v0.47.0
-	google.golang.org/api v0.302.0
+	google.golang.org/api v0.303.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -92,7 +92,7 @@ require (
 	github.com/Azure/go-autorest/logger v0.2.2 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.1 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
-	github.com/Microsoft/go-winio v0.6.3 // indirect
+	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
 	github.com/alibabacloud-go/cr-20160607 v1.0.1 // indirect
@@ -209,9 +209,9 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6 // indirect
 	github.com/lestrrat-go/jwx/v3 v3.3.0 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
-	github.com/letsencrypt/boulder v0.20261006.0 // indirect
+	github.com/letsencrypt/boulder v0.20261013.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
-	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c // indirect
