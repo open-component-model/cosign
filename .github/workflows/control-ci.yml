@@ -1,11 +1,11 @@
-# Checks Renovate's branch automerge waits on for ocm-main changes. On ocm-main it also
-# seeds the e2e caches: caches saved on other branches are branch-scoped, those saved on
-# the default branch are readable from every maintenance and renovate branch.
+# Checks for ocm-main changes; Maintain merges an ocm-main update PR only when they pass.
+# On ocm-main it also seeds the e2e caches: caches saved on other refs are scoped to them,
+# those saved on the default branch are readable from every maintenance branch and PR.
 name: Control CI
 
 on:
   push:
-    branches: ['renovate/**', ocm-main]
+    branches: [ocm-main]
   pull_request:
     branches: [ocm-main]
   schedule:
@@ -24,8 +24,6 @@ jobs:
           persist-credentials: false
       - name: shellcheck
         run: shellcheck hack/*.sh overlay/.github/ocm/*.sh
-      - name: Validate Renovate config
-        run: npx --yes --package renovate -- renovate-config-validator --strict .github/renovate.json5
 
   overlay-smoke:
     runs-on: ubuntu-26.04-arm

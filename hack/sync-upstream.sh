@@ -88,7 +88,7 @@ for name in "${existing[@]}"; do
   [ -n "$name" ] || continue
   echo "refreshing overlay on ocm/$name"
   if refresh "$name"; then continue; fi
-  # Most likely a race with a Renovate fast-forward: re-fetch and retry once.
+  # Most likely a race with a Maintain fast-forward: re-fetch and retry once.
   echo "::warning::push to ocm/$name rejected, retrying on fresh branch head"
   if git fetch -q --no-tags origin "+refs/heads/ocm/$name:refs/remotes/origin/ocm/$name" && refresh "$name"; then
     continue

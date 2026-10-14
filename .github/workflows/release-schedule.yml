@@ -7,7 +7,7 @@ name: Release schedule
 
 on:
   schedule:
-    - cron: '0 6 * * *' # after the 02:00 Renovate run merged its batch
+    - cron: '0 6 * * *' # after the 02:00 Maintain run merged its update PRs
   workflow_dispatch: {}
 
 concurrency:
