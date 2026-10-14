@@ -3,8 +3,7 @@
 This fork of [sigstore/cosign](https://github.com/sigstore/cosign) publishes
 FIPS 140-3 builds of cosign: built with `GOFIPS140=certified` (the CMVP-certified
 Go Cryptographic Module of the pinned Go toolchain, `fips140=on` by default) and
-`CGO_ENABLED=0`, for `linux/amd64` and `linux/arm64` only. Upstream sources are
-never modified.
+`CGO_ENABLED=0`. Upstream sources are never modified.
 
 ## Branch model
 
@@ -56,13 +55,16 @@ of `ocm/vX.Y.Z`. `+ocm.N` is semver build metadata: an OCM build of upstream
 
 ## Artifacts
 
-- Release assets: `cosign-linux-amd64`, `cosign-linux-arm64`, `cosign-darwin-amd64`,
-  `cosign-darwin-arm64`, `cosign-windows-amd64.exe`, `cosign_checksums.txt` (same
-  names and format as upstream), all cross-compiled with `CGO_ENABLED=0`.
+- Release assets: `cosign-linux-{amd64,arm64,arm,ppc64le,s390x,riscv64}`,
+  `cosign-darwin-{amd64,arm64}`, `cosign-windows-amd64.exe`, `cosign_checksums.txt`
+  (same names and format as upstream, without the CGO `pivkey-pkcs11key` variants),
+  all cross-compiled with `CGO_ENABLED=0`.
 - Image: `ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N` (OCI tags cannot contain
   `+`, so it becomes `-`), moving tags `vX.Y.Z` (newest build of that release) and
-  `latest` (highest maintenance branch). Scratch-based: the
-  binary, a CA bundle, `/tmp` and `$HOME=/home/nonroot`; runs as `65532:65532`.
+  `latest` (highest maintenance branch), for `linux/amd64`, `linux/arm64`,
+  `linux/arm/v7`, `linux/ppc64le`, `linux/s390x` and `linux/riscv64` (as upstream).
+  Scratch-based: the binary, a CA bundle, `/tmp` and `$HOME=/home/nonroot`; runs as
+  `65532:65532`.
 
 Verify a download:
 

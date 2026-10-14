@@ -130,7 +130,7 @@ jobs:
           tags=(-t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:${BASE}")
           if [ "$LATEST" = true ]; then tags+=(-t "${IMAGE}:latest"); fi
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x,linux/riscv64 \
             --provenance=false --sbom=false \
             --push --metadata-file meta.json \
             -f .github/ocm/Containerfile \
