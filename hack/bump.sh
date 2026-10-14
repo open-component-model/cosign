@@ -4,7 +4,8 @@
 #
 #   bump.sh open <target> <slug>   run the updater on <target>, push bump/<target>/<slug>, open or refresh its PR
 #   bump.sh wait                   wait for the PR's CI run (env TARGET, SHA)
-#   bump.sh merge                  fast-forward TARGET to SHA; GitHub records the PR as merged (env TARGET, BRANCH, SHA, PR)
+#   bump.sh merge                  fast-forward TARGET to SHA; GitHub records the PR as merged (env TARGET, BRANCH, SHA, PR;
+#                                  if TARGET moved, dispatches a rebuild with DISPATCH_TOKEN unless REBUILT=true)
 #
 # <target>/<slug>: ocm/vX.Y.Z go-modules, or ocm-main with a hack/bump-pins.sh group.
 # open/merge push with GH_APP_TOKEN (only ocmbot may push to ocm-main and ocm/v*); gh uses GH_TOKEN.
@@ -164,8 +165,17 @@ cmd_merge() {
   # A plain push is accepted only as a fast-forward.
   if ! git merge-base --is-ancestor "refs/remotes/origin/${TARGET}" "$SHA" ||
     ! git push -q origin "${SHA}:refs/heads/${TARGET}"; then
-    echo "::warning::${TARGET} moved while CI ran; ${PR} stays open and is rebuilt on the next run"
-    summary "  - not merged: \`${TARGET}\` moved while CI ran, rebuilt on the next run"
+    # Typically Sync upstream propagating an ocm-main overlay change. Rebuild on the new head
+    # right away, once: a rebuilt run that loses the race again waits for the next Maintain run.
+    if [ "${REBUILT:-false}" = true ]; then
+      echo "::warning::${TARGET} moved again while CI ran; ${PR} stays open and is rebuilt on the next run"
+      summary "  - not merged: \`${TARGET}\` moved again while CI ran, rebuilt on the next run"
+      return
+    fi
+    GH_TOKEN="${DISPATCH_TOKEN:-$GH_TOKEN}" gh workflow run bump.yml --repo "$GITHUB_REPOSITORY" --ref ocm-main \
+      -f target="$TARGET" -f slug="${BRANCH#"bump/${TARGET}/"}" -f rebuilt=true
+    echo "::notice::${TARGET} moved while CI ran; started a Bump run to rebuild ${PR} on the new head"
+    summary "  - not merged: \`${TARGET}\` moved while CI ran, [rebuilding now](https://github.com/${GITHUB_REPOSITORY}/actions/workflows/bump.yml)"
     return
   fi
   for _ in $(seq 12); do

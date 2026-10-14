@@ -12,6 +12,9 @@ on:
       slug:
         type: string
         required: true
+      rebuilt:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       target:
@@ -22,6 +25,10 @@ on:
         description: 'go-modules (ocm/vX.Y.Z), or go-toolchain | test-tooling | sigstore-e2e-services | github-actions | base-images (ocm-main)'
         type: string
         required: true
+      rebuilt:
+        description: 'Set by Bump itself when it rebuilds an update whose target moved during CI (rebuilds once)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -98,4 +105,7 @@ jobs:
           BRANCH: ${{ steps.open.outputs.branch }}
           SHA: ${{ steps.open.outputs.sha }}
           PR: ${{ steps.open.outputs.pr }}
+          REBUILT: ${{ inputs.rebuilt }}
+          # workflow_dispatch is one of the few events GITHUB_TOKEN may trigger; the job has actions: write.
+          DISPATCH_TOKEN: ${{ github.token }}
         run: control/hack/bump.sh merge

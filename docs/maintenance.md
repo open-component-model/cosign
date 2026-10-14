@@ -120,7 +120,7 @@ Each update is one branch `bump/<target>/<slug>` and one PR into `<target>`, lab
 |---|---|
 | CI green | merged, branch deleted |
 | CI red | PR stays open, Bump job and Maintain run fail; tomorrow's run rebuilds the update (newer versions may fix it) or retries the failed jobs |
-| Target moved while CI ran (e.g. Sync upstream refreshed the overlay) | warning; PR stays open and is rebuilt on the next base tomorrow |
+| Target moved while CI ran (typically Sync upstream propagating an `ocm-main` overlay change) | a new [Bump run](https://github.com/open-component-model/cosign/actions/workflows/bump.yml) starts at once and rebuilds the PR on the new head; if that one loses the race too, the PR waits for the next Maintain run |
 | Someone pushed to the bump branch | left alone: no rebuild, no auto-merge |
 
 ### Fixing a failing update PR
