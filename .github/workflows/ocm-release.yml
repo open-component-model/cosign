@@ -145,6 +145,18 @@ jobs:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: govulncheck
+          path: vuln
+      # govulncheck result of this release's binaries; predicate type as `cosign attest --type openvex`.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: vuln/govulncheck.openvex.json
+          push-to-registry: true
 
   release:
     needs: [ci, version, image]
@@ -178,6 +190,10 @@ jobs:
           chmod +x dist/cosign-*
           (cd dist && sha256sum cosign-* > cosign_checksums.txt)
           cat dist/cosign_checksums.txt
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: govulncheck
+          path: vuln
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: dist/cosign-*
@@ -201,6 +217,8 @@ jobs:
             echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module ${FIPS_MODULE} (GOFIPS140=certified, CGO disabled)."
             echo
             echo "Image: \`${IMAGE}:${IMAGE_TAG}@${DIGEST}\`"
+            echo
+            .github/ocm/vex-summary.sh vuln/govulncheck.openvex.json
           } > notes.md
           cat notes.md
       - name: Create GitHub release
@@ -208,7 +226,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$LATEST" = true ]; then latest=--latest; else latest=--latest=false; fi
-          gh release create "$VERSION" dist/* \
+          gh release create "$VERSION" dist/* vuln/govulncheck.openvex.json \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes-file notes.md \

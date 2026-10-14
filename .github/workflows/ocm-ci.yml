@@ -2,10 +2,7 @@
 name: OCM CI
 
 on:
-  # Renovate branch automerge waits for these checks before fast-forwarding.
-  push:
-    branches: ['renovate/**']
-  # Renovate falls back to a PR when checks fail.
+  # Maintain's update PRs (hack/bump.sh on ocm-main): it fast-forwards the branch once these pass.
   pull_request:
     branches: ['ocm/v*']
   workflow_call:
@@ -63,7 +60,7 @@ jobs:
           CGO_ENABLED=1 go test -race ${FIPS_SKIP_TESTS:+-skip "$FIPS_SKIP_TESTS"} $(go list ./... | grep -v third_party/)
       - name: Run cross platform e2e tests
         run: go test -tags=e2e,cross -v ./test/...
-      # Only maintenance branches save: renovate/** caches are branch-scoped and die with the branch.
+      # Only maintenance branches save: PR caches are scoped to the PR and die with it.
       - if: success() && startsWith(github.ref, 'refs/heads/ocm/') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -107,7 +104,7 @@ jobs:
       - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
       - name: Run end-to-end tests
         run: .github/ocm/e2e.sh run "${RUNNER_TEMP}/sigstore-images.tar"
-      # Only maintenance branches save: renovate/** caches are branch-scoped and die with the branch.
+      # Only maintenance branches save: PR caches are scoped to the PR and die with it.
       - if: success() && startsWith(github.ref, 'refs/heads/ocm/') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -130,6 +127,7 @@ jobs:
         run: |
           {
             echo "GO_VERSION=$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-)"
+            echo "GOVULNCHECK_VERSION=$(grep -E '^GOVULNCHECK_VERSION=' .github/ocm/.env | cut -d= -f2-)"
           } >> "$GITHUB_ENV"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -173,7 +171,27 @@ jobs:
           name: binaries
           path: dist/
           if-no-files-found: error
-      # Only maintenance branches save: renovate/** caches are branch-scoped and die with the branch.
+      # Known vulnerabilities in the shipped code, as OpenVEX (linux/amd64; every target builds
+      # the same packages). Reported in the job summary, attested on the image and listed in
+      # the release notes by OCM Release; findings never fail the build (docs/verification.md).
+      - name: govulncheck (OpenVEX)
+        run: |
+          set -euo pipefail
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          mkdir -p vuln
+          "$(go env GOPATH)/bin/govulncheck" -mode binary -format openvex dist/cosign-linux-amd64 > vuln/govulncheck.openvex.json
+          .github/ocm/vex-summary.sh vuln/govulncheck.openvex.json >> "$GITHUB_STEP_SUMMARY"
+          affected="$(jq '[.statements[]? | select(.status == "affected")] | length' vuln/govulncheck.openvex.json)"
+          if [ "$affected" -gt 0 ]; then
+            echo "::warning title=govulncheck::${affected} known vulnerabilities affect cosign, see the job summary"
+          fi
+      # Kept out of dist/: dist/ is the image build context and the set of release binaries.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: govulncheck
+          path: vuln/govulncheck.openvex.json
+          if-no-files-found: error
+      # Only maintenance branches save: PR caches are scoped to the PR and die with it.
       - if: success() && startsWith(github.ref, 'refs/heads/ocm/') && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
