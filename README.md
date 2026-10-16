@@ -9,7 +9,8 @@
 This fork of [sigstore/cosign](https://github.com/sigstore/cosign) publishes
 FIPS 140-3 builds of cosign: built with `GOFIPS140=certified` (the CMVP-certified
 Go Cryptographic Module of the pinned Go toolchain, `fips140=on` by default) and
-`CGO_ENABLED=0`. Upstream sources are never modified; only dependencies are updated.
+`CGO_ENABLED=0`. Only dependencies are updated; upstream sources are modified only for
+security fixes upstream has not released yet ([security patches](docs/maintenance.md#security-patches)).
 
 ## Branch model
 

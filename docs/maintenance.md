@@ -1,7 +1,8 @@
 # Maintaining the fork
 
-Everything runs from `ocm-main`. Maintenance branches `ocm/vX.Y.Z` receive only bot commits:
-overlay refreshes (Sync upstream) and dependency updates (Maintain). Nobody edits them by hand.
+Everything runs from `ocm-main`. Maintenance branches `ocm/vX.Y.Z` receive bot commits —
+overlay refreshes (Sync upstream) and dependency updates (Maintain) — plus the occasional
+reviewed [security patch](#security-patches). Nobody pushes to them by hand.
 
 ## Overview
 
@@ -175,6 +176,18 @@ stable tag:
 ```bash
 gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref ocm-main -f tag=v2.6.5
 ```
+
+## Security patches
+
+A vulnerability that cannot be fixed by a dependency update alone (the vulnerable module is
+unmaintained and has no fixed version) gets a source patch, merged through a PR into the
+maintenance branch. Prefer the change upstream already proposes, so the patch disappears
+once upstream releases it. New maintenance branches start from the upstream tag: re-apply
+the patch there unless that tag already contains the fix.
+
+| Branch | Vulnerability | Patch | Upstream |
+|---|---|---|---|
+| `ocm/v3.1.3` | [GO-2026-6225](https://pkg.go.dev/vuln/GO-2026-6225): `chrismellard/docker-credential-acr-env` sends Azure tokens to any host containing `.azurecr.io` | ACR credential helper replaced by `github.com/osscontainertools/docker-credential-acr` | [sigstore/cosign#5099](https://github.com/sigstore/cosign/pull/5099) |
 
 ## FIPS-only unit test failures
 
