@@ -696,8 +696,8 @@ github.com/tink-crypto/tink-go-gcpkms/v2 v2.4.0 h1:xpI5pnEQ0erFCS3JmcEl7Blluo8Zi
 github.com/tink-crypto/tink-go-gcpkms/v2 v2.4.0/go.mod h1:wDDAhjfd1t4TjeJCSsmFK7CARPUs/ITi16ZZ8kmAaFQ=
 github.com/tink-crypto/tink-go-hcvault/v2 v2.5.0 h1:eXuNqgrcYelxU1MVikOJDP3wTS5lvihM4ntoAbAMfvs=
 github.com/tink-crypto/tink-go-hcvault/v2 v2.5.0/go.mod h1:3RhcxAqek6xUlRFmJifvU4CYLZN60KMQdIKqpZAZJG0=
-github.com/tink-crypto/tink-go/v2 v2.8.0 h1:1zODq1bZDqOQdNPjhvwGYLDw9On7mDWPnQf+4xXlpAc=
-github.com/tink-crypto/tink-go/v2 v2.8.0/go.mod h1:aNXZeyxjQU9iqAeARRNmbESXUW6Mao1HRCCTY8B1TFM=
+github.com/tink-crypto/tink-go/v2 v2.9.0 h1:uvjgS1IYDB4zhDK0Zow8ZFB73IjzMAoSqW0JkFnvkrc=
+github.com/tink-crypto/tink-go/v2 v2.9.0/go.mod h1:aNXZeyxjQU9iqAeARRNmbESXUW6Mao1HRCCTY8B1TFM=
 github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 h1:e/5i7d4oYZ+C1wj2THlRK+oAhjeS/TRQwMfkIuet3w0=
 github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399/go.mod h1:LdwHTNJT99C5fTAzDz0ud328OgXz+gierycbcIx2fRs=
 github.com/tjfoc/gmsm v1.3.2/go.mod h1:HaUcFuY0auTiaHB9MHFGCPx5IaLhTUd2atbCFBQXn9w=
