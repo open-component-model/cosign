@@ -179,8 +179,9 @@ gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref ocm-m
 
 ## Security patches
 
-A vulnerability that cannot be fixed by a dependency update alone (the vulnerable module is
-unmaintained and has no fixed version) gets a source patch, merged through a PR into the
+A vulnerability that the Maintain bump cannot fix (the vulnerable module is unmaintained and
+has no fixed version, or the fixed version is excluded by the [Go module policy](#go-module-policy)
+because it needs cosign source changes) gets a source patch, merged through a PR into the
 maintenance branch. Prefer the change upstream already proposes, so the patch disappears
 once upstream releases it. New maintenance branches start from the upstream tag: re-apply
 the patch there unless that tag already contains the fix.
@@ -188,6 +189,7 @@ the patch there unless that tag already contains the fix.
 | Branch | Vulnerability | Patch | Upstream |
 |---|---|---|---|
 | `ocm/v3.1.3` | [GO-2026-6225](https://pkg.go.dev/vuln/GO-2026-6225): `chrismellard/docker-credential-acr-env` sends Azure tokens to any host containing `.azurecr.io` | ACR credential helper replaced by `github.com/osscontainertools/docker-credential-acr` | [sigstore/cosign#5099](https://github.com/sigstore/cosign/pull/5099) |
+| `ocm/v3.1.3` | [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932): deprecated `golang.org/x/crypto/openpgp`, linked in by rekor v1.5.3 `pkg/pki/pgp` | rekor v1.5.4 (ProtonMail/go-crypto) plus the rekor mock and client changes from upstream | [sigstore/cosign#5104](https://github.com/sigstore/cosign/pull/5104) (merged, not yet released) |
 
 ## FIPS-only unit test failures
 
