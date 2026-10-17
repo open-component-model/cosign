@@ -175,7 +175,8 @@ jobs:
   # manifest. Binary provenance is attested by the release job.
   targets:
     needs: [ci, image]
-    runs-on: ubuntu-slim
+    # Not ubuntu-slim: platform attestations are pushed to ghcr.io, which needs a docker login.
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
@@ -202,6 +203,12 @@ jobs:
         with:
           name: reports
           path: reports
+      - if: env.PLATFORM_DIGEST != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - id: target
         env:
           TARGET: ${{ matrix.target }}
