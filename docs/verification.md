@@ -54,11 +54,14 @@ packages, so the report holds for all platforms. The govulncheck version is
 **How to read it**: one OpenVEX statement per vulnerability in a module compiled into the
 binary.
 - `affected`: govulncheck found vulnerable symbols of that module in the binary.
-- `not_affected` (justification `vulnerable_code_not_in_execute_path`): the module is present, but
+- `not_affected` (justification `vulnerable_code_not_present`): the module is present, but
   the vulnerable symbols are not.
 
 Each statement names the vulnerability (`GO-YYYY-NNNN`, linked to pkg.go.dev) and the module
-version as a `pkg:golang/` purl.
+version as a `pkg:golang/` purl. govulncheck itself names no product; in the image attestation
+every statement's product is the image index, `pkg:oci/cosign@sha256%3A…`, with the modules
+as subcomponents (`.github/ocm/vex-image.sh`), so scanners can match the statements to the
+image. The release asset is the unmodified govulncheck output.
 
 **Why it never blocks a release**: some findings have no fix on a maintenance branch.
 `github.com/sigstore/**` modules are frozen at the upstream tag's versions
@@ -86,11 +89,23 @@ jq -r '.statements[] | select(.status == "affected")
   | "\(.vulnerability.name)\t\([.products[].subcomponents[]."@id"] | join(","))"' vex.json
 ```
 
-The report is standard OpenVEX, so scanners that accept VEX can consume it, e.g.
-`trivy image --vex vex.json ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N`.
+The attested report is standard OpenVEX scoped to the image index, so scanners that accept VEX
+apply it to that image. Trivy discovers the attestation itself:
+
+```bash
+trivy image --vex oci ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N
+# or with the extracted report
+trivy image --vex vex.json ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N
+```
+
+Scan the tag or the index digest: the statements and the attestation refer to the image index,
+not to the per-platform manifests.
 
 ## Images that predate the report
 
 Releases built before the OpenVEX attestation was introduced carry only build provenance.
 For those, `gh attestation verify --predicate-type https://openvex.dev/ns` fails with
 `HTTP 404`. Use the re-scan command above on their binaries instead.
+
+Releases attested before the report was scoped to the image carry the raw govulncheck product
+(`Unknown Product`): scanners find the attestation but apply none of its statements.
