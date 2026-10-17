@@ -54,7 +54,7 @@ packages, so the report holds for all platforms. The govulncheck version is
 **How to read it**: one OpenVEX statement per vulnerability in a module compiled into the
 binary.
 - `affected`: govulncheck found vulnerable symbols of that module in the binary.
-- `not_affected` (justification `vulnerable_code_not_in_execute_path`): the module is present, but
+- `not_affected` (justification `vulnerable_code_not_present`): the module is present, but
   the vulnerable symbols are not.
 
 Each statement names the vulnerability (`GO-YYYY-NNNN`, linked to pkg.go.dev) and the module
