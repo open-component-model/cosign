@@ -97,6 +97,8 @@ jobs:
       artifact-metadata: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
+      # {"linux/amd64": "sha256:…", …}: manifest digest per platform (linux/arm is v7)
+      platform-digests: ${{ steps.push.outputs.platform-digests }}
     env:
       BASE: ${{ needs.version.outputs.base }}
       VERSION: ${{ needs.version.outputs.version }}
@@ -139,7 +141,10 @@ jobs:
             --label "org.opencontainers.image.version=${VERSION}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             dist
-          echo "digest=$(jq -r '."containerimage.digest"' meta.json)" >> "$GITHUB_OUTPUT"
+          digest="$(jq -r '."containerimage.digest"' meta.json)"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "platform-digests=$(docker buildx imagetools inspect --raw "${IMAGE}@${digest}" \
+            | jq -c '[.manifests[] | {key: "\(.platform.os)/\(.platform.architecture)", value: .digest}] | from_entries')" >> "$GITHUB_OUTPUT"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
@@ -147,24 +152,106 @@ jobs:
           push-to-registry: true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: govulncheck
-          path: vuln
-      # govulncheck result of this release's binaries, scoped to the image index so scanners
-      # match its statements (vex-image.sh); predicate type as `cosign attest --type openvex`.
+          name: reports
+          path: reports
+      # Merged govulncheck result of all targets, scoped to the image index so scanners match
+      # its statements (vex-scope.sh; no repository_url qualifier: the digest identifies the
+      # image, so mirrors match too); predicate type as `cosign attest --type openvex`.
+      # Per-platform attestations come from the targets job.
       - name: Scope OpenVEX report to the image
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
-        run: .github/ocm/vex-image.sh vuln/govulncheck.openvex.json "$IMAGE" "$DIGEST" > vuln/image.openvex.json
+        run: .github/ocm/vex-scope.sh reports/govulncheck.openvex.json "pkg:oci/${IMAGE##*/}@${DIGEST/:/%3A}" > image.openvex.json
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           predicate-type: https://openvex.dev/ns
-          predicate-path: vuln/image.openvex.json
+          predicate-path: image.openvex.json
+          push-to-registry: true
+
+  # Per release target: SBOM and govulncheck report on its release binary and, for the
+  # image's platforms, build provenance, SBOM and govulncheck report on that platform's
+  # manifest. Binary provenance is attested by the release job.
+  targets:
+    needs: [ci, image]
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the targets of the build job in ocm-ci.yml.
+        target: [linux/amd64, linux/arm64, linux/arm, linux/ppc64le, linux/s390x, linux/riscv64,
+          darwin/amd64, darwin/arm64, windows/amd64]
+    env:
+      PLATFORM_DIGEST: ${{ fromJSON(needs.image.outputs.platform-digests)[matrix.target] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reports
+          path: reports
+      - id: target
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          name="cosign-${TARGET%/*}-${TARGET#*/}"
+          bin="dist/${name}"
+          if [ "${TARGET%/*}" = windows ]; then bin+=".exe"; fi
+          echo "bin=${bin}" >> "$GITHUB_OUTPUT"
+          echo "vex=reports/${name}.openvex.json" >> "$GITHUB_OUTPUT"
+          echo "sbom=reports/${name}.cdx.json" >> "$GITHUB_OUTPUT"
+      # Already scoped to this binary in OCM CI.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.target.outputs.bin }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: ${{ steps.target.outputs.vex }}
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.target.outputs.bin }}
+          sbom-path: ${{ steps.target.outputs.sbom }}
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          push-to-registry: true
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          sbom-path: ${{ steps.target.outputs.sbom }}
+          push-to-registry: true
+      - if: env.PLATFORM_DIGEST != ''
+        name: Scope OpenVEX report to the platform manifest
+        env:
+          VEX: ${{ steps.target.outputs.vex }}
+        run: .github/ocm/vex-scope.sh "$VEX" "pkg:oci/${IMAGE##*/}@${PLATFORM_DIGEST/:/%3A}" > platform.openvex.json
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: platform.openvex.json
           push-to-registry: true
 
   release:
-    needs: [ci, version, image]
+    needs: [ci, version, image, targets]
     runs-on: ubuntu-slim
     permissions:
       contents: write
@@ -197,8 +284,8 @@ jobs:
           cat dist/cosign_checksums.txt
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: govulncheck
-          path: vuln
+          name: reports
+          path: reports
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/cosign-*
@@ -223,7 +310,7 @@ jobs:
             echo
             echo "Image: \`${IMAGE}:${IMAGE_TAG}@${DIGEST}\`"
             echo
-            .github/ocm/vex-summary.sh vuln/govulncheck.openvex.json
+            .github/ocm/vex-summary.sh reports/cosign-*.openvex.json
           } > notes.md
           cat notes.md
       - name: Create GitHub release
@@ -231,7 +318,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$LATEST" = true ]; then latest=--latest; else latest=--latest=false; fi
-          gh release create "$VERSION" dist/* vuln/govulncheck.openvex.json \
+          gh release create "$VERSION" dist/* reports/*.json \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes-file notes.md \
