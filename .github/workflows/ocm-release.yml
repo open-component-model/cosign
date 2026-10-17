@@ -149,13 +149,18 @@ jobs:
         with:
           name: govulncheck
           path: vuln
-      # govulncheck result of this release's binaries; predicate type as `cosign attest --type openvex`.
+      # govulncheck result of this release's binaries, scoped to the image index so scanners
+      # match its statements (vex-image.sh); predicate type as `cosign attest --type openvex`.
+      - name: Scope OpenVEX report to the image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: .github/ocm/vex-image.sh vuln/govulncheck.openvex.json "$IMAGE" "$DIGEST" > vuln/image.openvex.json
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           predicate-type: https://openvex.dev/ns
-          predicate-path: vuln/govulncheck.openvex.json
+          predicate-path: vuln/image.openvex.json
           push-to-registry: true
 
   release:
