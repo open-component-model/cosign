@@ -51,7 +51,7 @@ them up the same day.
 |---|---|---|---|---|
 | `go-modules` | every `ocm/vX.Y.Z` | daily | `go.mod`, `go.sum` ([policy](#go-module-policy)) | `fix(deps): update go modules` |
 | `go-toolchain` | `ocm-main` | daily | `GO_VERSION` in `overlay/.github/ocm/.env` | `chore(deps): update go toolchain` |
-| `test-tooling` | `ocm-main` | Sundays | kind, git-cliff, govulncheck pins in the overlay `.env` | `chore(deps): update test tooling` |
+| `test-tooling` | `ocm-main` | Sundays | kind, git-cliff, govulncheck, cyclonedx-gomod pins in the overlay `.env` | `chore(deps): update test tooling` |
 | `sigstore-e2e-services` | `ocm-main` | Sundays | fulcio, rekor, timestamp-authority, rekor-tiles pins (e2e) | `chore(deps): update sigstore e2e services` |
 | `github-actions` | `ocm-main` | Sundays | action SHAs in `.github/workflows/` and `overlay/.github/workflows/` ([pinact](https://github.com/suzuki-shunsuke/pinact), majors included), `PINACT_VERSION` in `hack/tools.env` | `chore(deps): update github actions` |
 | `base-images` | `ocm-main` | Sundays | `FROM` digests in `overlay/.github/ocm/Containerfile` (tag kept) | `chore(deps): update container base images` |
