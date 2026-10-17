@@ -52,15 +52,19 @@ of `ocm/vX.Y.Z`. `+ocm.N` is semver build metadata: an OCM build of upstream
 - Release assets: `cosign-linux-{amd64,arm64,arm,ppc64le,s390x,riscv64}`,
   `cosign-darwin-{amd64,arm64}`, `cosign-windows-amd64.exe`, `cosign_checksums.txt`
   (same names and format as upstream, without the CGO `pivkey-pkcs11key` variants),
-  all cross-compiled with `CGO_ENABLED=0`, plus `govulncheck.openvex.json`.
+  all cross-compiled with `CGO_ENABLED=0`, plus per binary a CycloneDX SBOM
+  (`cosign-<os>-<arch>.cdx.json`) and a govulncheck OpenVEX report
+  (`cosign-<os>-<arch>.openvex.json`), and the merged `govulncheck.openvex.json`.
 - Image: `ghcr.io/open-component-model/cosign:vX.Y.Z-ocm.N` (OCI tags cannot contain
   `+`, so it becomes `-`), moving tags `vX.Y.Z` (newest build of that release) and
   `latest` (highest maintenance branch), for `linux/amd64`, `linux/arm64`,
   `linux/arm/v7`, `linux/ppc64le`, `linux/s390x` and `linux/riscv64` (as upstream).
   Scratch-based: the binary, a CA bundle, `/tmp` and `$HOME=/home/nonroot`; runs as
-  `65532:65532`. Attested: SLSA build provenance and the govulncheck OpenVEX report.
+  `65532:65532`. Attested: SLSA build provenance and the merged govulncheck OpenVEX report
+  on the index; provenance, SBOM and the platform's OpenVEX report on each platform
+  manifest. Each binary carries its provenance, SBOM and OpenVEX report.
 - Release notes list every change since the upstream tag and the known vulnerabilities
-  govulncheck found in the shipped binary.
+  govulncheck found reachable in the shipped code.
 
 Verify a download:
 
