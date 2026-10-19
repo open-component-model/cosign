@@ -15,7 +15,8 @@ permissions: {}
 env:
   IMAGE: ghcr.io/open-component-model/cosign
 
-# version -> ci (tests + all binaries, built once) -> image -> release. A branch whose tree equals its last release skips everything after version.
+# version -> ci (tests + all binaries, built once) -> image -> release. A branch with no changes since its last
+# release outside the OCM overlay (except GO_VERSION and Containerfile) skips everything after version.
 jobs:
   version:
     runs-on: ubuntu-slim
@@ -27,6 +28,7 @@ jobs:
       image-tag: ${{ steps.v.outputs.image-tag }}
       skip: ${{ steps.v.outputs.skip }}
       latest: ${{ steps.v.outputs.latest }}
+      last-tag: ${{ steps.v.outputs.last-tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,17 +50,25 @@ jobs:
           # in both schemes, so reusing an N would overwrite an existing image tag.
           last="$(git tag --list "${BASE}+ocm.*" "${BASE}-ocm.*" | sed -E "s/^${BASE}[+-]ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
 
-          # Release only if the tree differs from the last release (new commits that change
-          # nothing, e.g. a revert pair, do not count).
+          # Release only if something outside the OCM overlay changed since the last release
+          # (except GO_VERSION and Containerfile, which change the shipped binary and image).
+          # Overlay-only syncs from ocm-main do not count, nor do commits that change nothing,
+          # e.g. a revert pair. Upstream's own .github/workflows/* stays in the diff.
+          last_tag=""
           if [ -n "$last" ]; then
             last_tag="$(git tag --list "${BASE}+ocm.${last}" "${BASE}-ocm.${last}" | head -1)"
-            if git diff --quiet "$last_tag" HEAD; then
-              echo "No changes since ${last_tag}; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+            overlay_excludes=(':(exclude).github/workflows/ocm-*.yml' ':(exclude).github/ocm')
+            go_old="$(git show "${last_tag}:.github/ocm/.env" 2>/dev/null | grep -E '^GO_VERSION=' || true)"
+            go_new="$(grep -E '^GO_VERSION=' .github/ocm/.env || true)"
+            if git diff --quiet "$last_tag" HEAD -- . "${overlay_excludes[@]}" \
+              && git diff --quiet "$last_tag" HEAD -- .github/ocm/Containerfile \
+              && [ "$go_old" = "$go_new" ]; then
+              echo "No changes since ${last_tag} outside the OCM overlay; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Changes since ${last_tag}:"
-            git diff --stat "$last_tag" HEAD
+            echo "Changes since ${last_tag} outside the OCM overlay:"
+            git diff --stat "$last_tag" HEAD -- . "${overlay_excludes[@]}"
           fi
 
           # vX.Y.Z+ocm.N: semver build metadata, i.e. a build of upstream vX.Y.Z.
@@ -74,6 +84,7 @@ jobs:
             echo "version=${VERSION}"
             echo "image-tag=${IMAGE_TAG}"
             echo "latest=${LATEST}"
+            echo "last-tag=${last_tag}"
           } >> "$GITHUB_OUTPUT"
           echo "version=${VERSION} image-tag=${IMAGE_TAG} latest=${LATEST}"
 
@@ -272,6 +283,7 @@ jobs:
       LATEST: ${{ needs.version.outputs.latest }}
       DIGEST: ${{ needs.image.outputs.digest }}
       FIPS_MODULE: ${{ needs.ci.outputs.fips-module }}
+      LAST_TAG: ${{ needs.version.outputs.last-tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -309,6 +321,27 @@ jobs:
         run: |
           set -euo pipefail
           {
+            # Empty for the first release on a branch.
+            if [ -n "$LAST_TAG" ]; then
+              echo "## Changes since ${LAST_TAG}"
+              echo
+              # '+' must be encoded or the compare URL breaks.
+              echo "[Full diff](https://github.com/${GITHUB_REPOSITORY}/compare/${LAST_TAG//+/%2B}...${VERSION//+/%2B})"
+              echo
+              git log --no-merges --format='- %s (%h)' "${LAST_TAG}..HEAD" -- . ':(exclude).github/workflows/ocm-*.yml' ':(exclude).github/ocm'
+              echo
+              deps="$(git diff -U0 "$LAST_TAG" HEAD -- go.mod | grep -E '^[-+][[:space:]]' | sed -E 's/^([-+])[[:space:]]+/\1 /' || true)"
+              if [ -n "$deps" ]; then
+                echo "### go.mod changes"
+                echo
+                echo '```diff'
+                echo "$deps"
+                echo '```'
+                echo
+              fi
+              echo "---"
+              echo
+            fi
             cat changelog.md
             echo
             echo "---"
@@ -330,3 +363,22 @@ jobs:
             --title "$VERSION" \
             --notes-file notes.md \
             "$latest"
+      # The monorepo pins only the newest ocm/v* line; its Renovate opens or updates the
+      # OCM cosign bump PR. Without the dispatch, its daily run picks the release up.
+      - name: Token for open-component-model
+        id: ocm-token
+        if: env.LATEST == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.OCMBOT_APP_ID }}
+          private-key: ${{ secrets.OCMBOT_PRIV_KEY }}
+          repositories: open-component-model
+          # Dispatch the monorepo's Renovate workflow.
+          permission-actions: write
+      # No ignoreSchedule input: OCM cosign has no schedule, and forcing it would also open
+      # every other scheduled group's PRs.
+      - name: Trigger Renovate in open-component-model
+        if: env.LATEST == 'true'
+        env:
+          GH_TOKEN: ${{ steps.ocm-token.outputs.token }}
+        run: gh workflow run renovate.yml --repo open-component-model/open-component-model --ref main
