@@ -1,0 +1,393 @@
+# Managed by main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
+name: OCM Release
+
+# Dispatched daily by Release schedule on main (schedule triggers only fire on the default branch) or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
+on:
+  workflow_dispatch: {}
+
+# Serialize releases per branch: a queued second dispatch finds no diff to the release the first one created and skips.
+concurrency:
+  group: ocm-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/open-component-model/cosign
+
+# version -> ci (tests + all binaries, built once) -> image -> release. A branch with no changes since its last
+# release outside the OCM overlay (except GO_VERSION and Containerfile) skips everything after version.
+jobs:
+  version:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    outputs:
+      base: ${{ steps.v.outputs.base }}
+      version: ${{ steps.v.outputs.version }}
+      image-tag: ${{ steps.v.outputs.image-tag }}
+      skip: ${{ steps.v.outputs.skip }}
+      latest: ${{ steps.v.outputs.latest }}
+      last-tag: ${{ steps.v.outputs.last-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+      - id: v
+        name: Compute release version
+        run: |
+          set -euo pipefail
+          BASE="${GITHUB_REF_NAME#ocm/}"
+          if ! [[ "$BASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected branch ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
+
+          # N continues across the earlier -ocm.N git tags: images are tagged vX.Y.Z-ocm.N
+          # in both schemes, so reusing an N would overwrite an existing image tag.
+          last="$(git tag --list "${BASE}+ocm.*" "${BASE}-ocm.*" | sed -E "s/^${BASE}[+-]ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
+
+          # Release only if something outside the OCM overlay changed since the last release
+          # (except GO_VERSION and Containerfile, which change the shipped binary and image).
+          # Overlay-only syncs from main do not count, nor do commits that change nothing,
+          # e.g. a revert pair. Upstream's own .github/workflows/* stays in the diff.
+          last_tag=""
+          if [ -n "$last" ]; then
+            last_tag="$(git tag --list "${BASE}+ocm.${last}" "${BASE}-ocm.${last}" | head -1)"
+            overlay_excludes=(':(exclude).github/workflows/ocm-*.yml' ':(exclude).github/ocm')
+            go_old="$(git show "${last_tag}:.github/ocm/.env" 2>/dev/null | grep -E '^GO_VERSION=' || true)"
+            go_new="$(grep -E '^GO_VERSION=' .github/ocm/.env || true)"
+            if git diff --quiet "$last_tag" HEAD -- . "${overlay_excludes[@]}" \
+              && git diff --quiet "$last_tag" HEAD -- .github/ocm/Containerfile \
+              && [ "$go_old" = "$go_new" ]; then
+              echo "No changes since ${last_tag} outside the OCM overlay; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Changes since ${last_tag} outside the OCM overlay:"
+            git diff --stat "$last_tag" HEAD -- . "${overlay_excludes[@]}"
+          fi
+
+          # vX.Y.Z+ocm.N: semver build metadata, i.e. a build of upstream vX.Y.Z.
+          VERSION="${BASE}+ocm.$(( ${last:-0} + 1 ))"
+          # OCI tags cannot contain '+'; images use vX.Y.Z-ocm.N instead.
+          IMAGE_TAG="${VERSION/+/-}"
+
+          highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
+          if [ "$BASE" = "$highest" ]; then LATEST=true; else LATEST=false; fi
+
+          {
+            echo "skip=false"
+            echo "version=${VERSION}"
+            echo "image-tag=${IMAGE_TAG}"
+            echo "latest=${LATEST}"
+            echo "last-tag=${last_tag}"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION} image-tag=${IMAGE_TAG} latest=${LATEST}"
+
+  ci:
+    needs: [version]
+    if: needs.version.outputs.skip != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ocm-ci.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  image:
+    needs: [ci, version]
+    runs-on: ubuntu-26.04-arm
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      # {"linux/amd64": "sha256:…", …}: manifest digest per platform (linux/arm is v7)
+      platform-digests: ${{ steps.push.outputs.platform-digests }}
+    env:
+      BASE: ${{ needs.version.outputs.base }}
+      VERSION: ${{ needs.version.outputs.version }}
+      IMAGE_TAG: ${{ needs.version.outputs.image-tag }}
+      LATEST: ${{ needs.version.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist
+      - run: chmod +x dist/cosign-*
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Smoke-test image
+        run: |
+          # Native platform of this arm64 runner.
+          docker buildx build --platform linux/arm64 --load -t cosign-smoke -f .github/ocm/Containerfile dist
+          .github/ocm/smoke-image.sh cosign-smoke "$VERSION"
+      - id: push
+        name: Build and push multi-arch image
+        run: |
+          set -euo pipefail
+          # vX.Y.Z-ocm.N is immutable; vX.Y.Z moves to the newest build of upstream vX.Y.Z.
+          tags=(-t "${IMAGE}:${IMAGE_TAG}" -t "${IMAGE}:${BASE}")
+          if [ "$LATEST" = true ]; then tags+=(-t "${IMAGE}:latest"); fi
+          docker buildx build \
+            --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x,linux/riscv64 \
+            --provenance=false --sbom=false \
+            --push --metadata-file meta.json \
+            -f .github/ocm/Containerfile \
+            "${tags[@]}" \
+            --label org.opencontainers.image.source=https://github.com/open-component-model/cosign \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            dist
+          digest="$(jq -r '."containerimage.digest"' meta.json)"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "platform-digests=$(docker buildx imagetools inspect --raw "${IMAGE}@${digest}" \
+            | jq -c '[.manifests[] | {key: "\(.platform.os)/\(.platform.architecture)", value: .digest}] | from_entries')" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reports
+          path: reports
+      # Merged govulncheck result of all targets, scoped to the image index so scanners match
+      # its statements (vex-scope.sh; no repository_url qualifier: the digest identifies the
+      # image, so mirrors match too); predicate type as `cosign attest --type openvex`.
+      # Per-platform attestations come from the targets job.
+      - name: Scope OpenVEX report to the image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: .github/ocm/vex-scope.sh reports/govulncheck.openvex.json "pkg:oci/${IMAGE##*/}@${DIGEST/:/%3A}" > image.openvex.json
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: image.openvex.json
+          push-to-registry: true
+
+  # Per release target: SBOM and govulncheck report on its release binary and, for the
+  # image's platforms, build provenance, SBOM and govulncheck report on that platform's
+  # manifest. Binary provenance is attested by the release job.
+  targets:
+    needs: [ci, image]
+    # Not ubuntu-slim: platform attestations are pushed to ghcr.io, which needs a docker login.
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the targets of the build job in ocm-ci.yml.
+        target: [linux/amd64, linux/arm64, linux/arm, linux/ppc64le, linux/s390x, linux/riscv64,
+          darwin/amd64, darwin/arm64, windows/amd64]
+    env:
+      PLATFORM_DIGEST: ${{ fromJSON(needs.image.outputs.platform-digests)[matrix.target] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reports
+          path: reports
+      - if: env.PLATFORM_DIGEST != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: target
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          name="cosign-${TARGET%/*}-${TARGET#*/}"
+          bin="dist/${name}"
+          if [ "${TARGET%/*}" = windows ]; then bin+=".exe"; fi
+          echo "bin=${bin}" >> "$GITHUB_OUTPUT"
+          echo "vex=reports/${name}.openvex.json" >> "$GITHUB_OUTPUT"
+          echo "sbom=reports/${name}.cdx.json" >> "$GITHUB_OUTPUT"
+      # Already scoped to this binary in OCM CI.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.target.outputs.bin }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: ${{ steps.target.outputs.vex }}
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.target.outputs.bin }}
+          sbom-path: ${{ steps.target.outputs.sbom }}
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          push-to-registry: true
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          sbom-path: ${{ steps.target.outputs.sbom }}
+          push-to-registry: true
+      - if: env.PLATFORM_DIGEST != ''
+        name: Scope OpenVEX report to the platform manifest
+        env:
+          VEX: ${{ steps.target.outputs.vex }}
+        run: .github/ocm/vex-scope.sh "$VEX" "pkg:oci/${IMAGE##*/}@${PLATFORM_DIGEST/:/%3A}" > platform.openvex.json
+      - if: env.PLATFORM_DIGEST != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.PLATFORM_DIGEST }}
+          predicate-type: https://openvex.dev/ns
+          predicate-path: platform.openvex.json
+          push-to-registry: true
+
+  release:
+    needs: [ci, version, image, targets]
+    runs-on: ubuntu-slim
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      BASE: ${{ needs.version.outputs.base }}
+      VERSION: ${{ needs.version.outputs.version }}
+      IMAGE_TAG: ${{ needs.version.outputs.image-tag }}
+      LATEST: ${{ needs.version.outputs.latest }}
+      DIGEST: ${{ needs.image.outputs.digest }}
+      FIPS_MODULE: ${{ needs.ci.outputs.fips-module }}
+      LAST_TAG: ${{ needs.version.outputs.last-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Load .github/ocm/.env
+        run: echo "GIT_CLIFF_VERSION=$(grep -E '^GIT_CLIFF_VERSION=' .github/ocm/.env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist
+      - name: Checksums
+        run: |
+          chmod +x dist/cosign-*
+          (cd dist && sha256sum cosign-* > cosign_checksums.txt)
+          cat dist/cosign_checksums.txt
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reports
+          path: reports
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/cosign-*
+      # Changelog of everything on this branch since the upstream fork point, not
+      # since the previous OCM build (see .github/ocm/cliff.toml).
+      - uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          version: ${{ env.GIT_CLIFF_VERSION }}
+          config: .github/ocm/cliff.toml
+          args: --tag ${{ env.VERSION }} ${{ env.BASE }}..HEAD
+        env:
+          OUTPUT: changelog.md
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          {
+            # Empty for the first release on a branch.
+            if [ -n "$LAST_TAG" ]; then
+              echo "## Changes since ${LAST_TAG}"
+              echo
+              # '+' must be encoded or the compare URL breaks.
+              echo "[Full diff](https://github.com/${GITHUB_REPOSITORY}/compare/${LAST_TAG//+/%2B}...${VERSION//+/%2B})"
+              echo
+              git log --no-merges --format='- %s (%h)' "${LAST_TAG}..HEAD" -- . ':(exclude).github/workflows/ocm-*.yml' ':(exclude).github/ocm'
+              echo
+              deps="$(git diff -U0 "$LAST_TAG" HEAD -- go.mod | grep -E '^[-+][[:space:]]' | sed -E 's/^([-+])[[:space:]]+/\1 /' || true)"
+              if [ -n "$deps" ]; then
+                echo "### go.mod changes"
+                echo
+                echo '```diff'
+                echo "$deps"
+                echo '```'
+                echo
+              fi
+              echo "---"
+              echo
+            fi
+            cat changelog.md
+            echo
+            echo "---"
+            echo
+            echo "FIPS 140-3 build of upstream [${BASE}](https://github.com/sigstore/cosign/releases/tag/${BASE}) with the CMVP-certified Go Cryptographic Module ${FIPS_MODULE} (GOFIPS140=certified, CGO disabled)."
+            echo
+            echo "Image: \`${IMAGE}:${IMAGE_TAG}@${DIGEST}\`"
+            echo
+            .github/ocm/vex-summary.sh reports/cosign-*.openvex.json
+          } > notes.md
+          cat notes.md
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$LATEST" = true ]; then latest=--latest; else latest=--latest=false; fi
+          gh release create "$VERSION" dist/* reports/*.json \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes-file notes.md \
+            "$latest"
+
+  # The monorepo pins only the newest ocm/v* line; its Renovate opens or updates the
+  # OCM cosign bump PR. Without the dispatch, its daily run picks the release up.
+  renovate:
+    needs: [version, release]
+    if: needs.version.outputs.latest == 'true'
+    runs-on: ubuntu-slim
+    # The ocmbot secrets are environment secrets (as in bump.yml).
+    environment:
+      name: automation
+      deployment: false
+    permissions: {}
+    steps:
+      - name: Token for open-component-model
+        id: ocm-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.OCMBOT_APP_ID }}
+          private-key: ${{ secrets.OCMBOT_PRIV_KEY }}
+          repositories: open-component-model
+          # Dispatch the monorepo's Renovate workflow.
+          permission-actions: write
+      # No ignoreSchedule input: OCM cosign has no schedule, and forcing it would also open
+      # every other scheduled group's PRs.
+      - name: Trigger Renovate in open-component-model
+        env:
+          GH_TOKEN: ${{ steps.ocm-token.outputs.token }}
+        run: gh workflow run renovate.yml --repo open-component-model/open-component-model --ref main
