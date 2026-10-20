@@ -14,10 +14,10 @@ require (
 	github.com/dustin/go-humanize v1.1.0
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-openapi/runtime v0.33.3
-	github.com/go-openapi/strfmt v0.27.3
+	github.com/go-openapi/strfmt v0.27.4
 	github.com/go-openapi/swag/conv v0.29.2
 	github.com/go-piv/piv-go/v2 v2.6.0
-	github.com/google/certificate-transparency-go v1.3.3
+	github.com/google/certificate-transparency-go v1.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.22.1
 	github.com/google/go-github/v88 v88.0.0
@@ -30,7 +30,7 @@ require (
 	github.com/moby/term v0.5.2
 	github.com/mozillazg/docker-credential-acr-helper v0.4.2
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481
-	github.com/open-policy-agent/opa v1.21.2
+	github.com/open-policy-agent/opa v1.21.3
 	github.com/osscontainertools/docker-credential-acr v0.9.2
 	github.com/secure-systems-lab/go-securesystemslib v0.11.1
 	github.com/sigstore/protobuf-specs v0.5.1
@@ -56,7 +56,7 @@ require (
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/term v0.47.0
-	google.golang.org/api v0.304.0
+	google.golang.org/api v0.305.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -114,11 +114,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.6 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.6 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.6 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ecr v1.66.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.66.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.6 // indirect
-	github.com/aws/aws-sdk-go-v2/service/kms v1.61.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.61.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
@@ -138,6 +138,7 @@ require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20260914070511-d678ea5ea03f // indirect
