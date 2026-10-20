@@ -16,7 +16,7 @@ security fixes upstream has not released yet ([security patches](docs/maintenanc
 
 | Ref | Content |
 |---|---|
-| `ocm-main` (default) | Automation only: this README, `docs/`, `hack/`, workflows and `overlay/` |
+| `main` (default) | Automation only: this README, `docs/`, `hack/`, workflows and `overlay/` |
 | tags `vX.Y.Z` | Mirrors of every upstream stable tag (hourly, never overwritten) |
 | `ocm/vX.Y.Z` | Maintenance branch = upstream tag `vX.Y.Z` + overlay commits + dependency updates |
 | `bump/<target>/<slug>` | Short-lived update branch behind an update PR, deleted once merged |
@@ -25,14 +25,14 @@ security fixes upstream has not released yet ([security patches](docs/maintenanc
 `overlay/` is copied onto every maintenance branch: it replaces upstream's workflows and
 Dependabot config with `OCM CI` and `OCM Release`, and adds `.github/ocm/` (version pins,
 FIPS verification, image Containerfile). Never edit overlay files on a maintenance branch;
-change `overlay/` on `ocm-main` and Sync upstream propagates it.
+change `overlay/` on `main` and Sync upstream propagates it.
 
 ## Automation
 
 - **Sync upstream** (hourly) mirrors upstream tags, creates `ocm/vX.Y.Z` for every tag at or
   above `v3.1.3`, and refreshes the overlay on existing maintenance branches.
 - **Maintain** (daily 02:00 UTC) opens one update PR per maintenance branch (Go modules) and
-  per `ocm-main` pin group (Go toolchain daily; test tooling, Sigstore e2e services, actions and
+  per `main` pin group (Go toolchain daily; test tooling, Sigstore e2e services, actions and
   base images on Sundays). ocmbot merges each PR when its CI passes; failing PRs stay open with
   the `dependencies` label and turn the Maintain run red.
 - **Release schedule** (daily 06:00 UTC) runs **OCM Release** on every maintenance branch whose

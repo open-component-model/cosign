@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Updates one group of ocm-main pins (run from the root of an ocm-main checkout) and writes
+# Updates one group of main pins (run from the root of a main checkout) and writes
 # the commit message to $BUMP_MSG; leaves it empty when nothing changed.
 #
 #   bump-pins.sh go-toolchain|test-tooling|sigstore-e2e-services   pins in overlay/.github/ocm/.env

@@ -63,7 +63,7 @@ for t in "${candidates[@]}"; do
   echo "creating branch ocm/$t"
   git checkout -q -B "ocm/$t" "refs/tags/$t^{commit}"
   "$APPLY" "$CONTROL_DIR"
-  git commit -q -s -m "chore: apply OCM overlay (ocm-main@${CONTROL_SHA::12})"
+  git commit -q -s -m "chore: apply OCM overlay (main@${CONTROL_SHA::12})"
   git push -q origin "HEAD:refs/heads/ocm/$t"
   git update-ref "refs/remotes/origin/ocm/$t" HEAD
 done
@@ -79,7 +79,7 @@ refresh() {
     echo "ocm/$name: overlay up to date"
     return 0
   fi
-  git commit -q -s -m "chore: update OCM overlay (ocm-main@${CONTROL_SHA::12})" || return 1
+  git commit -q -s -m "chore: update OCM overlay (main@${CONTROL_SHA::12})" || return 1
   git push -q origin "HEAD:refs/heads/ocm/$name"
 }
 

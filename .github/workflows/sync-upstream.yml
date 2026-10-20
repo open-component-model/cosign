@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: '17 * * * *'
   push:
-    branches: [ocm-main]
+    branches: [main]
     paths:
       - 'overlay/**'
       - 'hack/**'

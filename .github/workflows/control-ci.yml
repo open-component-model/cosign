@@ -1,13 +1,13 @@
-# Checks for ocm-main changes; Maintain merges an ocm-main update PR only when they pass.
-# On ocm-main it also seeds the e2e caches: caches saved on other refs are scoped to them,
+# Checks for main changes; Maintain merges a main update PR only when they pass.
+# On main it also seeds the e2e caches: caches saved on other refs are scoped to them,
 # those saved on the default branch are readable from every maintenance branch and PR.
 name: Control CI
 
 on:
   push:
-    branches: [ocm-main]
+    branches: [main]
   pull_request:
-    branches: [ocm-main]
+    branches: [main]
   schedule:
     - cron: '41 5 * * 1' # weekly, so the seeded caches follow maintenance-branch go.sum changes
   workflow_dispatch: {}
@@ -126,15 +126,15 @@ jobs:
           GOTOOLCHAIN: local
         run: .github/ocm/e2e.sh run "${RUNNER_TEMP}/sigstore-images.tar"
       - name: Export sigstore service images
-        if: success() && github.ref == 'refs/heads/ocm-main' && steps.images.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && steps.images.outputs.cache-hit != 'true'
         working-directory: work
         run: .github/ocm/e2e.sh save-images "${RUNNER_TEMP}/sigstore-images.tar"
-      - if: success() && github.ref == 'refs/heads/ocm-main' && steps.images.outputs.cache-hit != 'true'
+      - if: success() && github.ref == 'refs/heads/main' && steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/sigstore-images.tar
           key: ${{ env.IMAGES_KEY }}
-      - if: success() && github.ref == 'refs/heads/ocm-main' && steps.go-cache.outputs.cache-hit != 'true'
+      - if: success() && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |

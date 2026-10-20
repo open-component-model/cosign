@@ -1,8 +1,8 @@
-# Managed by ocm-main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
+# Managed by main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
 name: OCM CI
 
 on:
-  # Maintain's update PRs (hack/bump.sh on ocm-main): it fast-forwards the branch once these pass.
+  # Maintain's update PRs (hack/bump.sh on main): it fast-forwards the branch once these pass.
   pull_request:
     branches: ['ocm/v*']
   workflow_call:
@@ -96,7 +96,7 @@ jobs:
             ~/go/pkg/mod
           key: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
           restore-keys: go-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-${{ env.GO_VERSION }}-
-      # Seeded by Control CI on ocm-main, the only scope every branch can read.
+      # Seeded by Control CI on main, the only scope every branch can read.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/sigstore-images.tar

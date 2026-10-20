@@ -1,7 +1,7 @@
-# Managed by ocm-main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
+# Managed by main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
 name: OCM Release
 
-# Dispatched daily by Release schedule on ocm-main (schedule triggers only fire on the default branch) or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
+# Dispatched daily by Release schedule on main (schedule triggers only fire on the default branch) or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
 on:
   workflow_dispatch: {}
 
@@ -52,7 +52,7 @@ jobs:
 
           # Release only if something outside the OCM overlay changed since the last release
           # (except GO_VERSION and Containerfile, which change the shipped binary and image).
-          # Overlay-only syncs from ocm-main do not count, nor do commits that change nothing,
+          # Overlay-only syncs from main do not count, nor do commits that change nothing,
           # e.g. a revert pair. Upstream's own .github/workflows/* stays in the diff.
           last_tag=""
           if [ -n "$last" ]; then

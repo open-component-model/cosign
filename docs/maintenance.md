@@ -1,6 +1,6 @@
 # Maintaining the fork
 
-Everything runs from `ocm-main`. Maintenance branches `ocm/vX.Y.Z` receive bot commits —
+Everything runs from `main`. Maintenance branches `ocm/vX.Y.Z` receive bot commits —
 overlay refreshes (Sync upstream) and dependency updates (Maintain) — plus the occasional
 reviewed [security patch](#security-patches). Nobody pushes to them by hand.
 
@@ -9,9 +9,9 @@ reviewed [security patch](#security-patches). Nobody pushes to them by hand.
 ```mermaid
 flowchart LR
   U[sigstore/cosign tags] -->|Sync upstream, hourly| B[ocm/vX.Y.Z]
-  O[ocm-main overlay/] -->|Sync upstream, on change| B
+  O[main overlay/] -->|Sync upstream, on change| B
   M[Maintain, 02:00] -->|go-modules| PB[update PR into ocm/vX.Y.Z]
-  M -->|pin groups| PM[update PR into ocm-main]
+  M -->|pin groups| PM[update PR into main]
   PB -->|OCM CI green: fast-forward| B
   PM -->|Control CI green: fast-forward| O
   PB -.->|CI red| R[PR stays open, Maintain run red]
@@ -31,13 +31,13 @@ flowchart LR
 
 ## Schedules
 
-| Workflow | File (on `ocm-main`) | Trigger | Runner |
+| Workflow | File (on `main`) | Trigger | Runner |
 |---|---|---|---|
 | Sync upstream | `.github/workflows/sync-upstream.yml` | hourly at :17, pushes to `overlay/`/`hack/`, dispatch with `tag` | `ubuntu-slim` |
 | Maintain | `.github/workflows/maintain.yml` | daily 02:00 UTC (weekly groups on Sundays), dispatch with `weekly` | `ubuntu-slim` (plan) |
 | Bump | `.github/workflows/bump.yml` | called by Maintain per target, or dispatched for one update | `ubuntu-26.04-arm` |
 | Release schedule | `.github/workflows/release-schedule.yml` | daily 06:00 UTC | `ubuntu-slim` |
-| Control CI | `.github/workflows/control-ci.yml` | pushes to and PRs into `ocm-main`, weekly Monday 05:41 (cache seeding) | `ubuntu-slim`, `ubuntu-26.04-arm`, `ubuntu-26.04` |
+| Control CI | `.github/workflows/control-ci.yml` | pushes to and PRs into `main`, weekly Monday 05:41 (cache seeding) | `ubuntu-slim`, `ubuntu-26.04-arm`, `ubuntu-26.04` |
 | OCM CI | `overlay/.github/workflows/ocm-ci.yml` (on `ocm/v*`) | PRs into `ocm/v*`, called by OCM Release | `ubuntu-26.04-arm`, `ubuntu-26.04` (e2e) |
 | OCM Release | `overlay/.github/workflows/ocm-release.yml` (on `ocm/v*`) | dispatched by Release schedule or by hand | `ubuntu-slim`, `ubuntu-26.04-arm` |
 
@@ -50,14 +50,14 @@ them up the same day.
 | Slug | Target | When | Changes | Commit subject |
 |---|---|---|---|---|
 | `go-modules` | every `ocm/vX.Y.Z` | daily | `go.mod`, `go.sum` ([policy](#go-module-policy)) | `fix(deps): update go modules` |
-| `go-toolchain` | `ocm-main` | daily | `GO_VERSION` in `overlay/.github/ocm/.env` | `chore(deps): update go toolchain` |
-| `test-tooling` | `ocm-main` | Sundays | kind, git-cliff, govulncheck, cyclonedx-gomod pins in the overlay `.env` | `chore(deps): update test tooling` |
-| `sigstore-e2e-services` | `ocm-main` | Sundays | fulcio, rekor, timestamp-authority, rekor-tiles pins (e2e) | `chore(deps): update sigstore e2e services` |
-| `github-actions` | `ocm-main` | Sundays | action SHAs in `.github/workflows/` and `overlay/.github/workflows/` ([pinact](https://github.com/suzuki-shunsuke/pinact), majors included), `PINACT_VERSION` in `hack/tools.env` | `chore(deps): update github actions` |
-| `base-images` | `ocm-main` | Sundays | `FROM` digests in `overlay/.github/ocm/Containerfile` (tag kept) | `chore(deps): update container base images` |
+| `go-toolchain` | `main` | daily | `GO_VERSION` in `overlay/.github/ocm/.env` | `chore(deps): update go toolchain` |
+| `test-tooling` | `main` | Sundays | kind, git-cliff, govulncheck, cyclonedx-gomod pins in the overlay `.env` | `chore(deps): update test tooling` |
+| `sigstore-e2e-services` | `main` | Sundays | fulcio, rekor, timestamp-authority, rekor-tiles pins (e2e) | `chore(deps): update sigstore e2e services` |
+| `github-actions` | `main` | Sundays | action SHAs in `.github/workflows/` and `overlay/.github/workflows/` ([pinact](https://github.com/suzuki-shunsuke/pinact), majors included), `PINACT_VERSION` in `hack/tools.env` | `chore(deps): update github actions` |
+| `base-images` | `main` | Sundays | `FROM` digests in `overlay/.github/ocm/Containerfile` (tag kept) | `chore(deps): update container base images` |
 
-Maintenance branches are updated in parallel. The `ocm-main` groups run one after another,
-each on top of the previous merge. An `ocm-main` merge that touches `overlay/` reaches the
+Maintenance branches are updated in parallel. The `main` groups run one after another,
+each on top of the previous merge. A `main` merge that touches `overlay/` reaches the
 maintenance branches through Sync upstream; their next release ships it.
 
 The `fix(deps)`/`chore(deps)` prefixes put the updates under "Dependencies" in the release
@@ -112,7 +112,7 @@ Each update is one branch `bump/<target>/<slug>` and one PR into `<target>`, lab
      re-run on a fresh push.
    - Otherwise: force-pushes a single new commit, then opens the PR or updates its title and body.
 2. **wait**: follows the PR's CI run (`OCM CI` for maintenance branches, `Control CI` for
-   `ocm-main`). If the run already failed on an earlier day, its failed jobs are re-run once,
+   `main`). If the run already failed on an earlier day, its failed jobs are re-run once,
    which retries flakes daily.
 3. **merge**: pushes the PR commit to the target as a fast-forward. GitHub records the PR as
    merged, and the bump branch is deleted.
@@ -121,20 +121,20 @@ Each update is one branch `bump/<target>/<slug>` and one PR into `<target>`, lab
 |---|---|
 | CI green | merged, branch deleted |
 | CI red | PR stays open, Bump job and Maintain run fail; tomorrow's run rebuilds the update (newer versions may fix it) or retries the failed jobs |
-| Target moved while CI ran (typically Sync upstream propagating an `ocm-main` overlay change) | a new [Bump run](https://github.com/open-component-model/cosign/actions/workflows/bump.yml) starts at once and rebuilds the PR on the new head; if that one loses the race too, the PR waits for the next Maintain run |
+| Target moved while CI ran (typically Sync upstream propagating a `main` overlay change) | a new [Bump run](https://github.com/open-component-model/cosign/actions/workflows/bump.yml) starts at once and rebuilds the PR on the new head; if that one loses the race too, the PR waits for the next Maintain run |
 | Someone pushed to the bump branch | left alone: no rebuild, no auto-merge |
 
 ### Fixing a failing update PR
 
 - **Flaky test**: nothing to do. The next run re-runs the failed jobs. To retry now, run
-  `gh workflow run bump.yml --ref ocm-main -f target=<target> -f slug=<slug>`.
+  `gh workflow run bump.yml --ref main -f target=<target> -f slug=<slug>`.
 - **One module breaks the build**: decide whether it is a policy case. Lasting exclusions go into the
   jq filter of `hack/bump-go-modules.sh`, with a reason, and into the table above. The next run
   rebuilds the PR without it.
 - **Code fix needed**: push a commit to the bump branch. From then on the PR belongs to you:
   Maintain no longer touches it and it is not auto-merged. Merging into `ocm/v*` needs an org
   admin (`maintenance-branches` ruleset: only ocmbot and org admins may update those branches);
-  PRs into `ocm-main` merge normally (`control-branch` ruleset). Use a rebase or fast-forward
+  PRs into `main` merge normally (`control-branch` ruleset). Use a rebase or fast-forward
   merge to keep the history linear. Once merged, delete the branch: Maintain resumes with the
   next run.
 - **FIPS-only unit test failure**: see [below](#fips-only-unit-test-failures).
@@ -142,14 +142,14 @@ Each update is one branch `bump/<target>/<slug>` and one PR into `<target>`, lab
 ## Running things manually
 
 ```bash
-# all updates now (with the weekly ocm-main groups)
-gh workflow run maintain.yml --repo open-component-model/cosign --ref ocm-main -f weekly=true
+# all updates now (with the weekly main groups)
+gh workflow run maintain.yml --repo open-component-model/cosign --ref main -f weekly=true
 # one update
-gh workflow run bump.yml --repo open-component-model/cosign --ref ocm-main -f target=ocm/v3.1.3 -f slug=go-modules
+gh workflow run bump.yml --repo open-component-model/cosign --ref main -f target=ocm/v3.1.3 -f slug=go-modules
 # sync now / create a branch for an older tag
-gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref ocm-main
+gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref main
 # release every changed maintenance branch / one branch
-gh workflow run release-schedule.yml --repo open-component-model/cosign --ref ocm-main
+gh workflow run release-schedule.yml --repo open-component-model/cosign --ref main
 gh workflow run ocm-release.yml --repo open-component-model/cosign --ref ocm/v3.1.3
 ```
 
@@ -161,7 +161,7 @@ cd /tmp/preview
 BUMP_MSG=/tmp/msg GOTOOLCHAIN=go$(grep -E '^GO_VERSION=' .github/ocm/.env | cut -d= -f2-) \
   "$OLDPWD/hack/bump-go-modules.sh"
 cat /tmp/msg; git diff --stat
-# ocm-main pins, from an ocm-main checkout:
+# main pins, from a main checkout:
 BUMP_MSG=/tmp/msg GH_TOKEN="$(gh auth token)" hack/bump-pins.sh test-tooling
 ```
 
@@ -174,7 +174,7 @@ Tags below `v3.1.3` get no branch automatically. To create one for any mirrored
 stable tag:
 
 ```bash
-gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref ocm-main -f tag=v2.6.5
+gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref main -f tag=v2.6.5
 ```
 
 ## Security patches

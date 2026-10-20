@@ -1,6 +1,6 @@
 # One dependency-update PR: hack/bump.sh open -> wait for its CI -> fast-forward the target.
 # Called by Maintain for every target/group; dispatch it to run a single update:
-#   gh workflow run bump.yml --ref ocm-main -f target=ocm/v3.1.3 -f slug=go-modules
+#   gh workflow run bump.yml --ref main -f target=ocm/v3.1.3 -f slug=go-modules
 name: Bump
 
 on:
@@ -18,11 +18,11 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Branch to update: ocm-main or ocm/vX.Y.Z'
+        description: 'Branch to update: main or ocm/vX.Y.Z'
         type: string
         required: true
       slug:
-        description: 'go-modules (ocm/vX.Y.Z), or go-toolchain | test-tooling | sigstore-e2e-services | github-actions | base-images (ocm-main)'
+        description: 'go-modules (ocm/vX.Y.Z), or go-toolchain | test-tooling | sigstore-e2e-services | github-actions | base-images (main)'
         type: string
         required: true
       rebuilt:
@@ -48,7 +48,7 @@ jobs:
       actions: write
     steps:
       # Pushes need the ocmbot token: GITHUB_TOKEN may not touch .github/workflows and only
-      # ocmbot may push to ocm-main and ocm/v* (rulesets).
+      # ocmbot may push to main and ocm/v* (rulesets).
       - id: open-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
