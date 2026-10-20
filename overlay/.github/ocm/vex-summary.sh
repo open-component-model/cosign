@@ -31,7 +31,7 @@ jq -rn '
   | ($vulns | map(map(select(.status == "affected")) | select(length > 0))) as $affected
   | "### Known vulnerabilities (govulncheck)",
     "",
-    "\($affected | length) affected, \(($vulns | length) - ($affected | length)) not affected on any of the \($docs | length) platforms (scanned \($docs[0].doc.timestamp // "at an unknown time")). The OpenVEX reports are attested on the image and the binaries: [verify them](https://github.com/open-component-model/cosign/blob/ocm-main/docs/verification.md#vulnerability-report-openvex).",
+    "\($affected | length) affected, \(($vulns | length) - ($affected | length)) not affected on any of the \($docs | length) platforms (scanned \($docs[0].doc.timestamp // "at an unknown time")). The OpenVEX reports are attested on the image and the binaries: [verify them](https://github.com/open-component-model/cosign/blob/main/docs/verification.md#vulnerability-report-openvex).",
     (if ($affected | length) > 0 then
       "",
       "| vulnerability | module | platforms | summary |",

@@ -41,7 +41,7 @@ if [ "${#updates[@]}" -eq 0 ]; then
 fi
 printf 'updating %s\n' "${updates[@]}"
 # A module that needs a newer Go than GO_VERSION fails here (GOTOOLCHAIN=local); it waits
-# for the go-toolchain bump on ocm-main.
+# for the go-toolchain bump on main.
 go get "${updates[@]}"
 go mod tidy
 

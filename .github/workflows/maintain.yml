@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       weekly:
-        description: 'Also run the weekly ocm-main groups'
+        description: 'Also run the weekly main groups'
         type: boolean
         default: false
 
@@ -46,7 +46,7 @@ jobs:
             echo "| update | targets |"
             echo "| --- | --- |"
             echo "| go-modules | ${branches} |"
-            echo "| ocm-main pins | ${groups} |"
+            echo "| main pins | ${groups} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Maintenance branches are independent: in parallel.
@@ -66,7 +66,7 @@ jobs:
       slug: go-modules
     secrets: inherit
 
-  # All groups update ocm-main: one at a time, each on top of the previous merge.
+  # All groups update main: one at a time, each on top of the previous merge.
   pins:
     needs: plan
     permissions:
@@ -79,6 +79,6 @@ jobs:
         slug: ${{ fromJSON(needs.plan.outputs.groups) }}
     uses: ./.github/workflows/bump.yml
     with:
-      target: ocm-main
+      target: main
       slug: ${{ matrix.slug }}
     secrets: inherit
