@@ -26,6 +26,9 @@ mapfile -t updates < <(
     # Renamed to github.com/ThalesGroup/crypto11 at v1.5.0; bumps past v1.4.x on the old
     # path fail go.sum with a module-path mismatch (OCM #2966, #3379).
     | select(.Path != "github.com/ThalesIgnite/crypto11")
+    # v2.27.0 pulls google.golang.org/genproto past the removal of googleapis/cloud/kms/v1,
+    # which tink-go-gcpkms v2.4.0 tests (via timestamp-authority) still import: tidy fails.
+    | select(.Path != "github.com/googleapis/gax-go/v2")
     # Indirect modules without releases follow their importers via MVS instead of jumping
     # to their default-branch tip, which breaks version sets: e.g. k8s.io/kube-openapi tip
     # needs structured-merge-diff/v7 while apimachinery still passes v6 types.
