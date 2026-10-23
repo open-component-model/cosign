@@ -74,6 +74,7 @@ newest version with these exceptions:
 | No `v0` → `v1` | Same module path for Go, but a breaking release in semver terms (e.g. `golang/snappy v0.0.4 → v1.0.0`). |
 | No `github.com/sigstore/**` | The cosign ecosystem moves in lockstep with cosign source: rekor v1.5.4 added `CreateLogEntryContext` to its generated client (the cosign mock no longer compiles), timestamp-authority v2.1.3 broke the TSA e2e tests. |
 | No `github.com/ThalesIgnite/crypto11` | Renamed to `github.com/ThalesGroup/crypto11` at v1.5.0; bumps on the old path fail `go.sum` with a module-path mismatch (OCM #2966, #3379). |
+| No `github.com/googleapis/gax-go/v2` | v2.27.0 requires a `google.golang.org/genproto` without `googleapis/cloud/kms/v1`, which tink-go-gcpkms v2.4.0 tests (via timestamp-authority) still import; `go mod tidy` fails. Lift once tink-go-gcpkms or timestamp-authority drop that import. |
 | No indirect pseudo-version jumps | Untagged indirect modules follow their importers via MVS; jumping to their default-branch tip breaks version sets (`k8s.io/kube-openapi` tip needs `structured-merge-diff/v7` while apimachinery passes v6 types; `google.golang.org/genproto` tip dropped a package tink-go-gcpkms still imports). |
 | Go version from `GO_VERSION` | Runs with `GOTOOLCHAIN=local`; the `go`/`toolchain` directives are never bumped on purpose. A module that needs a newer Go fails the update until the `go-toolchain` update has merged and Sync upstream has propagated it. |
 
