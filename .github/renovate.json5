@@ -1,0 +1,56 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // only-security-updates: every package disabled, OSV + GitHub vulnerability alerts force-enable fixes.
+  // gomodIndirectSecurityUpdates: the same for indirect go.mod requirements.
+  extends: ['config:recommended', 'security:only-security-updates', 'security:gomodIndirectSecurityUpdates', ':disableDependencyDashboard'],
+  // main only here; .github/workflows/renovate.yml adds the highest ocm/vX.Y.Z through RENOVATE_FORCE
+  // (force overrides this value). Older maintenance branches are frozen.
+  baseBranchPatterns: ['$default'],
+  branchPrefix: 'renovate/',
+  gitAuthor: 'ocmbot[bot] <125909804+ocmbot[bot]@users.noreply.github.com>',
+  gitIgnoredAuthors: ['125909804+ocmbot[bot]@users.noreply.github.com'],
+  prConcurrentLimit: 0,
+  prHourlyLimit: 0,
+  branchConcurrentLimit: 0,
+  lockFileMaintenance: { enabled: false },
+  semanticCommits: 'enabled',
+  postUpdateOptions: ['gomodTidy'],
+  vulnerabilityAlerts: {
+    automerge: true,
+    automergeType: 'branch', // fast-forward after green OCM CI; a PR only when CI fails
+    labels: ['security'],
+    // fix(deps) lands under "Dependencies" in overlay/.github/ocm/cliff.toml
+    semanticCommitType: 'fix',
+    semanticCommitScope: 'deps',
+  },
+  packageRules: [
+    {
+      // Go toolchain pin on main; the only non-security update. Re-enabled after the preset's catch-all disable.
+      matchBaseBranches: ['main'],
+      matchManagers: ['custom.regex'],
+      matchDatasources: ['golang-version'],
+      enabled: true,
+      automerge: true,
+      automergeType: 'branch',
+      groupName: 'Go toolchain',
+      groupSlug: 'go-toolchain',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+    },
+    {
+      // The Go version comes from overlay GO_VERSION, never from go.mod directives.
+      matchBaseBranches: ['/^ocm\\/v/'],
+      matchManagers: ['gomod'],
+      matchDepTypes: ['golang', 'toolchain'],
+      enabled: false,
+    },
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      managerFilePatterns: ['/^overlay/\\.github/ocm/\\.env$/'], // main only; maintenance branches have .github/ocm/.env
+      matchStrings: ['# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+GO_VERSION=(?<currentValue>\\S+)'],
+      versioningTemplate: 'semver',
+    },
+  ],
+}

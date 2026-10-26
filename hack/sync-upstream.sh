@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mirrors upstream stable tags, creates ocm/<tag> maintenance branches, and
-# refreshes the overlay on existing maintenance branches.
+# refreshes the overlay on the highest maintenance branch only; older ones are frozen.
 #
 # Required env: GH_APP_TOKEN, MIN_TAG, CONTROL_DIR, CONTROL_SHA. Optional: EXTRA_TAG.
 # Pushes must use the app token: GITHUB_TOKEN may not touch .github/workflows, and only ocmbot may push to ocm/v*.
@@ -38,9 +38,6 @@ while read -r t; do
   fi
 done < <(git for-each-ref --format='%(refname:lstrip=2)' refs/upstream-tags/)
 
-# Existing maintenance branches, captured before step 2 creates new ones.
-mapfile -t existing < <(git for-each-ref --format='%(refname:lstrip=4)' refs/remotes/origin/ocm/)
-
 at_or_above_min() {
   [ "$(printf '%s\n%s\n' "$MIN_TAG" "$1" | sort -V | head -1)" = "$MIN_TAG" ]
 }
@@ -68,8 +65,9 @@ for t in "${candidates[@]}"; do
   git update-ref "refs/remotes/origin/ocm/$t" HEAD
 done
 
-# 3. Refresh the overlay on branches that already existed. Runs in an `if`, where
-# errexit is off, so every step propagates its failure explicitly.
+# 3. Refresh the overlay on the highest maintenance branch, computed after step 2 created
+# new ones. refresh runs in an `if`, where errexit is off, so every step propagates its
+# failure explicitly.
 refresh() {
   local name="$1"
   git checkout -q -f -B "ocm/$name" "refs/remotes/origin/ocm/$name" || return 1
@@ -83,21 +81,15 @@ refresh() {
   git push -q origin "HEAD:refs/heads/ocm/$name"
 }
 
-failed=()
-for name in "${existing[@]}"; do
-  [ -n "$name" ] || continue
-  echo "refreshing overlay on ocm/$name"
-  if refresh "$name"; then continue; fi
-  # Most likely a race with a Maintain fast-forward: re-fetch and retry once.
-  echo "::warning::push to ocm/$name rejected, retrying on fresh branch head"
-  if git fetch -q --no-tags origin "+refs/heads/ocm/$name:refs/remotes/origin/ocm/$name" && refresh "$name"; then
-    continue
-  fi
-  echo "::error::failed to refresh overlay on ocm/$name"
-  failed+=("$name")
-done
+highest="$(git for-each-ref --format='%(refname:lstrip=4)' refs/remotes/origin/ocm/ | sort -V | tail -1)"
+[ -n "$highest" ] || exit 0
 
-if [ "${#failed[@]}" -gt 0 ]; then
-  echo "::error::overlay refresh failed for: ${failed[*]}"
-  exit 1
+echo "refreshing overlay on ocm/$highest"
+if refresh "$highest"; then exit 0; fi
+# Most likely a race with a Renovate fast-forward: re-fetch and retry once.
+echo "::warning::push to ocm/$highest rejected, retrying on fresh branch head"
+if git fetch -q --no-tags origin "+refs/heads/ocm/$highest:refs/remotes/origin/ocm/$highest" && refresh "$highest"; then
+  exit 0
 fi
+echo "::error::failed to refresh overlay on ocm/$highest"
+exit 1

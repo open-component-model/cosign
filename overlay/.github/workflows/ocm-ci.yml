@@ -2,7 +2,10 @@
 name: OCM CI
 
 on:
-  # Maintain's update PRs (hack/bump.sh on main): it fast-forwards the branch once these pass.
+  # Renovate branch automerge waits for these checks before fast-forwarding.
+  push:
+    branches: ['renovate/**']
+  # Renovate falls back to a PR when checks fail.
   pull_request:
     branches: ['ocm/v*']
   workflow_call:

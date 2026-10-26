@@ -370,7 +370,7 @@ jobs:
     needs: [version, release]
     if: needs.version.outputs.latest == 'true'
     runs-on: ubuntu-slim
-    # The ocmbot secrets are environment secrets (as in bump.yml).
+    # The ocmbot secrets are environment secrets (as in renovate.yml).
     environment:
       name: automation
       deployment: false

@@ -1,16 +1,17 @@
 # OCM FIPS builds of sigstore/cosign
 
-[![Maintain](https://github.com/open-component-model/cosign/actions/workflows/maintain.yml/badge.svg)](https://github.com/open-component-model/cosign/actions/workflows/maintain.yml)
+[![Renovate](https://github.com/open-component-model/cosign/actions/workflows/renovate.yml/badge.svg)](https://github.com/open-component-model/cosign/actions/workflows/renovate.yml)
 [![Sync upstream](https://github.com/open-component-model/cosign/actions/workflows/sync-upstream.yml/badge.svg)](https://github.com/open-component-model/cosign/actions/workflows/sync-upstream.yml)
 [![Release schedule](https://github.com/open-component-model/cosign/actions/workflows/release-schedule.yml/badge.svg)](https://github.com/open-component-model/cosign/actions/workflows/release-schedule.yml)
 [![Control CI](https://github.com/open-component-model/cosign/actions/workflows/control-ci.yml/badge.svg)](https://github.com/open-component-model/cosign/actions/workflows/control-ci.yml)
-[![Update PRs](https://img.shields.io/github/issues-pr/open-component-model/cosign/dependencies?label=open%20update%20PRs)](https://github.com/open-component-model/cosign/pulls?q=is%3Apr+is%3Aopen+label%3Adependencies)
+[![Security PRs](https://img.shields.io/github/issues-pr/open-component-model/cosign/security?label=open%20security%20PRs)](https://github.com/open-component-model/cosign/pulls?q=is%3Apr+is%3Aopen+label%3Asecurity)
 
 This fork of [sigstore/cosign](https://github.com/sigstore/cosign) publishes
 FIPS 140-3 builds of cosign: built with `GOFIPS140=certified` (the CMVP-certified
 Go Cryptographic Module of the pinned Go toolchain, `fips140=on` by default) and
-`CGO_ENABLED=0`. Only dependencies are updated; upstream sources are modified only for
-security fixes upstream has not released yet ([security patches](docs/maintenance.md#security-patches)).
+`CGO_ENABLED=0`. Only the highest maintenance branch is maintained, and only with Go module
+security fixes and Go toolchain updates; upstream sources are modified only for security fixes
+upstream has not released yet ([security patches](docs/maintenance.md#security-patches)).
 
 ## Branch model
 
@@ -18,26 +19,26 @@ security fixes upstream has not released yet ([security patches](docs/maintenanc
 |---|---|
 | `main` (default) | Automation only: this README, `docs/`, `hack/`, workflows and `overlay/` |
 | tags `vX.Y.Z` | Mirrors of every upstream stable tag (hourly, never overwritten) |
-| `ocm/vX.Y.Z` | Maintenance branch = upstream tag `vX.Y.Z` + overlay commits + dependency updates |
-| `bump/<target>/<slug>` | Short-lived update branch behind an update PR, deleted once merged |
+| `ocm/vX.Y.Z` | Maintenance branch = upstream tag `vX.Y.Z` + overlay commits + security updates. Only the highest one is maintained; older ones are frozen |
+| `renovate/…` | Short-lived Renovate update branch, fast-forwarded once CI passes; a PR only when CI fails |
 | tags `vX.Y.Z+ocm.N` | Releases cut from `ocm/vX.Y.Z` |
 
-`overlay/` is copied onto every maintenance branch: it replaces upstream's workflows and
-Dependabot config with `OCM CI` and `OCM Release`, and adds `.github/ocm/` (version pins,
-FIPS verification, image Containerfile). Never edit overlay files on a maintenance branch;
-change `overlay/` on `main` and Sync upstream propagates it.
+`overlay/` is copied onto every new maintenance branch and kept current on the highest one: it
+replaces upstream's workflows and Dependabot config with `OCM CI` and `OCM Release`, and adds
+`.github/ocm/` (version pins, FIPS verification, image Containerfile). Never edit overlay files
+on a maintenance branch; change `overlay/` on `main` and Sync upstream propagates it.
 
 ## Automation
 
 - **Sync upstream** (hourly) mirrors upstream tags, creates `ocm/vX.Y.Z` for every tag at or
-  above `v3.1.3`, and refreshes the overlay on existing maintenance branches.
-- **Maintain** (daily 02:00 UTC) opens one update PR per maintenance branch (Go modules) and
-  per `main` pin group (Go toolchain daily; test tooling, Sigstore e2e services, actions and
-  base images on Sundays). ocmbot merges each PR when its CI passes; failing PRs stay open with
-  the `dependencies` label and turn the Maintain run red.
-- **Release schedule** (daily 06:00 UTC) runs **OCM Release** on every maintenance branch whose
-  tree changed since its last release: tests, FIPS binaries, multi-arch image, GitHub release
-  `vX.Y.Z+ocm.N` with provenance and a govulncheck OpenVEX report.
+  above `v3.1.3`, and refreshes the overlay on the highest maintenance branch.
+- **Renovate** (02:00 and 14:00 UTC) opens Go module security updates (OSV and GitHub
+  vulnerability alerts) on the highest maintenance branch and Go toolchain updates on `main`.
+  It fast-forwards each update once CI passes; failing updates become PRs (security ones
+  labelled `security`).
+- **Release schedule** (daily 06:00 UTC) runs **OCM Release** on the highest maintenance branch
+  if its tree changed since its last release: tests, FIPS binaries, multi-arch image, GitHub
+  release `vX.Y.Z+ocm.N` with provenance and a govulncheck OpenVEX report.
 
 Details, update policy and runbooks: [docs/maintenance.md](docs/maintenance.md).
 

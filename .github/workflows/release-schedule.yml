@@ -1,13 +1,14 @@
 # OCM Release lives on the maintenance branches, where `schedule` never fires (GitHub
 # runs scheduled workflows only from the default branch). This dispatches it once a
-# day on every ocm/v* branch; its version job releases only branches whose tree
-# differs from their last release. Manual run: dispatch this workflow (all branches)
-# or OCM Release itself on one branch.
+# day on the highest ocm/v* branch; older maintenance branches are frozen and get no
+# scheduled releases. Its version job releases only when the tree differs from the last
+# release. Manual run: dispatch this workflow (highest branch) or OCM Release itself on
+# one branch.
 name: Release schedule
 
 on:
   schedule:
-    - cron: '0 6 * * *' # after the 02:00 Maintain run merged its update PRs
+    - cron: '0 6 * * *' # after the 02:00 Renovate run merged its updates
   workflow_dispatch: {}
 
 concurrency:
@@ -21,17 +22,15 @@ jobs:
   dispatch:
     runs-on: ubuntu-slim
     steps:
-      - name: Dispatch OCM Release on every maintenance branch
+      - name: Dispatch OCM Release on the highest maintenance branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mapfile -t branches < <(git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}" 'refs/heads/ocm/v*' | sed 's#.*refs/heads/##' | sort -V)
-          if [ "${#branches[@]}" -eq 0 ]; then
+          b="$(git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}" 'refs/heads/ocm/v*' | sed 's#.*refs/heads/##' | sort -V | tail -1)"
+          if [ -z "$b" ]; then
             echo "no maintenance branches"
             exit 0
           fi
-          for b in "${branches[@]}"; do
-            echo "dispatching OCM Release on ${b}"
-            gh workflow run ocm-release.yml --repo "$GITHUB_REPOSITORY" --ref "$b"
-          done
+          echo "dispatching OCM Release on ${b}"
+          gh workflow run ocm-release.yml --repo "$GITHUB_REPOSITORY" --ref "$b"
