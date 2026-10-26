@@ -18,7 +18,7 @@ flowchart LR
   RM -->|Control CI green: fast-forward| O
   RB -.->|CI red| P[PR stays open]
   RM -.->|CI red| P
-  S[Release schedule, 06:00] -->|tree changed| REL[OCM Release on highest ocm/vX.Y.Z]
+  S[Release schedule, 06:00] -->|releasable changes| REL[OCM Release on highest ocm/vX.Y.Z]
   REL --> A[GitHub release vX.Y.Z+ocm.N + image + attestations]
 ```
 
@@ -45,6 +45,18 @@ flowchart LR
 `schedule` only fires on the default branch, so Release schedule dispatches OCM Release on
 the highest maintenance branch. Updates that went green after the 14:00 run are merged at
 02:00, so the 06:00 release picks them up.
+
+OCM Release only releases when something changed since the last `vX.Y.Z+ocm.N` tag outside
+the overlay (`go.mod`/`go.sum`, sources), in `.github/ocm/Containerfile`, or in `GO_VERSION`.
+Other overlay changes (workflows, scripts, test pins) ship with the next such release; a
+dispatch without one ends after the `version` job ("nothing to release"). Dispatching OCM
+Release or Release schedule by hand is therefore safe.
+
+Renovate reads its config from `main`. The PR dry run therefore checks the workflow change
+(base branch pick in the job summary) but not a config change in the same PR: before
+`.github/renovate.json5` exists on `main`, it logs "Repository is disabled - skipping".
+Validate config changes locally with
+`npx --yes --package renovate -- renovate-config-validator .github/renovate.json5`.
 
 ## Updates
 
@@ -109,7 +121,7 @@ updated by hand through a PR into `main`. `GO_VERSION` is updated by Renovate th
 gh workflow run renovate.yml --repo open-component-model/cosign --ref main
 # sync now / create a branch for an older tag
 gh workflow run sync-upstream.yml --repo open-component-model/cosign --ref main
-# release the highest maintenance branch (if changed) / one branch
+# release the highest maintenance branch / one branch (each only if there are releasable changes)
 gh workflow run release-schedule.yml --repo open-component-model/cosign --ref main
 gh workflow run ocm-release.yml --repo open-component-model/cosign --ref ocm/v3.1.4
 ```
@@ -162,7 +174,7 @@ shipped binary is broken for that feature.
 ## Why security-only
 
 Updating every Go module daily on every maintenance branch released far too often (`ocm/v3.1.3`
-reached `+ocm.35`). Releases now only follow security fixes, Go toolchain updates and overlay
-changes on the highest branch. Dependabot security updates cannot replace Renovate here: they
+reached `+ocm.35`). Releases now only follow security fixes, Go toolchain updates and source
+patches on the highest branch. Dependabot security updates cannot replace Renovate here: they
 only target the default branch `main`, which has no `go.mod`. Renovate's OSV alerts work on
 any base branch.

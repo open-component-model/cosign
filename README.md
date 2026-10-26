@@ -37,8 +37,9 @@ on a maintenance branch; change `overlay/` on `main` and Sync upstream propagate
   It fast-forwards each update once CI passes; failing updates become PRs (security ones
   labelled `security`).
 - **Release schedule** (daily 06:00 UTC) runs **OCM Release** on the highest maintenance branch
-  if its tree changed since its last release: tests, FIPS binaries, multi-arch image, GitHub
-  release `vX.Y.Z+ocm.N` with provenance and a govulncheck OpenVEX report.
+  if it changed outside the overlay (or in `GO_VERSION`/the Containerfile) since its last
+  release: tests, FIPS binaries, multi-arch image, GitHub release `vX.Y.Z+ocm.N` with
+  provenance and a govulncheck OpenVEX report.
 
 Details, update policy and runbooks: [docs/maintenance.md](docs/maintenance.md).
 
