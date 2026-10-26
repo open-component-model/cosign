@@ -1,11 +1,11 @@
-# Checks for main changes; Maintain merges a main update PR only when they pass.
+# Checks for main changes; Renovate's branch automerge waits on these.
 # On main it also seeds the e2e caches: caches saved on other refs are scoped to them,
 # those saved on the default branch are readable from every maintenance branch and PR.
 name: Control CI
 
 on:
   push:
-    branches: [main]
+    branches: ['renovate/**', main]
   pull_request:
     branches: [main]
   schedule:
