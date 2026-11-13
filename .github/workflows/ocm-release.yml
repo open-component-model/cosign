@@ -364,13 +364,14 @@ jobs:
             --notes-file notes.md \
             "$latest"
 
-  # The monorepo pins only the newest ocm/v* line; its Renovate opens or updates the
-  # OCM cosign bump PR. Without the dispatch, its daily run picks the release up.
-  renovate:
+  # The monorepo pins only the newest ocm/v* line; its dependency bot (deps, in
+  # Renovate compatibility mode) opens or updates the OCM cosign bump PR.
+  # Without the dispatch, its daily run picks the release up.
+  deps:
     needs: [version, release]
     if: needs.version.outputs.latest == 'true'
     runs-on: ubuntu-slim
-    # The ocmbot secrets are environment secrets (as in renovate.yml).
+    # The ocmbot secrets are environment secrets (as in the bot's own workflow).
     environment:
       name: automation
       deployment: false
@@ -383,11 +384,11 @@ jobs:
           client-id: ${{ secrets.OCMBOT_APP_ID }}
           private-key: ${{ secrets.OCMBOT_PRIV_KEY }}
           repositories: open-component-model
-          # Dispatch the monorepo's Renovate workflow.
+          # Dispatch the monorepo's dependency workflow.
           permission-actions: write
-      # No ignoreSchedule input: OCM cosign has no schedule, and forcing it would also open
-      # every other scheduled group's PRs.
-      - name: Trigger Renovate in open-component-model
+      # No scheduleTime input: OCM cosign has no schedule, and shifting the run time would
+      # also open every other scheduled group's PRs.
+      - name: Trigger deps in open-component-model
         env:
           GH_TOKEN: ${{ steps.ocm-token.outputs.token }}
-        run: gh workflow run renovate.yml --repo open-component-model/open-component-model --ref main
+        run: gh workflow run deps.yml --repo open-component-model/open-component-model --ref main
