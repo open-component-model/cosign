@@ -15,9 +15,8 @@ flowchart LR
   R[Renovate, 02:00 + 14:00] -->|Go module security fixes| RB[renovate/* branch off ocm/vX.Y.Z]
   R -->|GO_VERSION| RM[renovate/go-toolchain off main]
   RB -->|OCM CI green: fast-forward| B
-  RM -->|Control CI green: fast-forward| O
+  RM -->|Control CI green + approval: PR auto-merge| O
   RB -.->|CI red| P[PR stays open]
-  RM -.->|CI red| P
   S[Release schedule, 06:00] -->|releasable changes| REL[OCM Release on highest ocm/vX.Y.Z]
   REL --> A[GitHub release vX.Y.Z+ocm.N + image + attestations]
 ```
@@ -27,7 +26,7 @@ flowchart LR
 | Question | Place |
 |---|---|
 | Are updates flowing? | [Renovate runs](https://github.com/open-component-model/cosign/actions/workflows/renovate.yml): the job summary names the base branches, the log lists every lookup and merge |
-| What is stuck? | [Open Renovate PRs](https://github.com/open-component-model/cosign/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Focmbot) (security ones labelled `security`) |
+| What is stuck? | [Open Renovate PRs](https://github.com/open-component-model/cosign/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Focm-bot-renovate) (security ones labelled `security`; the go-toolchain PR waits for an approval) |
 | What changed in a release? | Release notes: changes since the upstream tag, then the known vulnerabilities |
 | Which vulnerabilities affect the current build? | Job summary of the `build` job in the latest OCM CI run of the branch, or the OpenVEX attestation of the image ([verification](verification.md#vulnerability-report-openvex)) |
 
@@ -71,9 +70,12 @@ which overrides `baseBranchPatterns` in the config file.
 | `main` | `GO_VERSION` in `overlay/.github/ocm/.env` | `golang-version` | `chore(deps): update go toolchain …` |
 
 Every other dependency is disabled (`security:only-security-updates`). Renovate pushes each
-update to a `renovate/…` branch. Once its CI passes (OCM CI for maintenance branches, Control
-CI for `main`), the next run fast-forwards the base branch. When CI fails, Renovate opens a
-PR instead.
+update to a `renovate/…` branch.
+
+- Maintenance branch: once OCM CI passes, the next run fast-forwards `ocm/vX.Y.Z`. When CI
+  fails, Renovate opens a PR instead.
+- `main`: Renovate opens a PR with GitHub auto-merge, which merges once Control CI passes and
+  someone approved it (`main` takes changes only through a reviewed PR).
 
 A `GO_VERSION` merge on `main` changes `overlay/`, so Sync upstream propagates it to the
 highest maintenance branch, and its next release ships it.
@@ -107,12 +109,29 @@ updated by hand through a PR into `main`. `GO_VERSION` is updated by Renovate th
 
 - **Flaky test**: re-run the failed jobs of the branch's CI run. Once it is green, the next
   Renovate run merges it.
-- **Code fix needed**: push a commit to the Renovate branch. Renovate then stops rebasing the
-  branch. Merging into `ocm/v*` needs an org admin (`maintenance-branches` ruleset: only
-  ocmbot and org admins may update those branches); PRs into `main` merge normally
-  (`control-branch` ruleset). Use a rebase or fast-forward merge to keep the history linear.
-  If the fix is a source change, record it under [security patches](#security-patches).
+- **Code fix needed**: open a PR from your fork into `ocm/vX.Y.Z` with the update and the fix
+  (nobody but Renovate can push to `renovate/…` branches). An org owner merges it with a squash
+  merge. If the fix is a source change, record it under [security patches](#security-patches).
 - **FIPS-only unit test failure**: see [below](#fips-only-unit-test-failures).
+
+## Bots
+
+Every commit on this repository is signed and every branch has a linear history, bot commits
+included.
+
+| Ref | Who writes it | How |
+|---|---|---|
+| `main` | everyone, through a reviewed PR from a fork (DCO check) | merge on GitHub |
+| `ocm/v*` | ocm-bot-release-cosign (Sync upstream), ocm-bot-renovate (fast-forward); org owners through a PR | Sync upstream creates its commits through the REST API, so GitHub signs them |
+| `renovate/**` | ocm-bot-renovate | Renovate creates commits through the API (`RENOVATE_PLATFORM_COMMIT`) |
+| tags | ocm-bot-release-cosign: mirrored upstream tags, `vX.Y.Z+ocm.N` from OCM Release | never moved or deleted |
+
+ocm-bot-release-cosign is installed on this repository only (contents and workflows write; the
+overlay replaces `.github/workflows` on `ocm/v*`). Its credentials, `COSIGN_BOT_CLIENT_ID` and
+`COSIGN_BOT_PRIVATE_KEY`, are secrets of the `release-automation` environment, which admits
+`main` and `ocm/v*`. Renovate's, `RENOVATE_BOT_CLIENT_ID` and `RENOVATE_BOT_PRIVATE_KEY`, are
+secrets of the `automation` environment. Nobody pushes branches to this repository by hand:
+contributions come from forks.
 
 ## Running things manually
 
@@ -154,9 +173,9 @@ OCM Release.
 
 A vulnerability that Renovate cannot fix (the vulnerable module is unmaintained and has no
 fixed version, or the fixed version needs cosign source changes, see the
-[Go module policy](#go-module-policy)) gets a source patch, merged through a PR into the
-maintenance branch. Prefer the change upstream already proposes, so the patch disappears
-once upstream releases it. New maintenance branches start from the upstream tag: re-apply
+[Go module policy](#go-module-policy)) gets a source patch: a PR from a fork into the
+maintenance branch, merged by an org owner (squash merge). Prefer the change upstream already
+proposes, so the patch disappears once upstream releases it. New maintenance branches start from the upstream tag: re-apply
 the patch there unless that tag already contains the fix.
 
 | Branch | Vulnerability | Patch | Upstream |

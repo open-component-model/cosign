@@ -1,4 +1,4 @@
-# Checks for main changes; Renovate's branch automerge waits on these.
+# Checks for main changes; Renovate's go-toolchain PR auto-merges once these pass and it is approved.
 # On main it also seeds the e2e caches: caches saved on other refs are scoped to them,
 # those saved on the default branch are readable from every maintenance branch and PR.
 name: Control CI
