@@ -7,8 +7,8 @@
   // (force overrides this value). Older maintenance branches are frozen.
   baseBranchPatterns: ['$default'],
   branchPrefix: 'renovate/',
-  gitAuthor: 'ocmbot[bot] <125909804+ocmbot[bot]@users.noreply.github.com>',
-  gitIgnoredAuthors: ['125909804+ocmbot[bot]@users.noreply.github.com'],
+  gitAuthor: 'ocm-bot-renovate[bot] <358373261+ocm-bot-renovate[bot]@users.noreply.github.com>',
+  gitIgnoredAuthors: ['358373261+ocm-bot-renovate[bot]@users.noreply.github.com'],
   prConcurrentLimit: 0,
   prHourlyLimit: 0,
   branchConcurrentLimit: 0,
@@ -26,12 +26,14 @@
   packageRules: [
     {
       // Go toolchain pin on main; the only non-security update. Re-enabled after the preset's catch-all disable.
+      // main takes changes only through a reviewed PR, so Renovate opens one with
+      // GitHub auto-merge: it merges once Control CI is green and someone approved it.
       matchBaseBranches: ['main'],
       matchManagers: ['custom.regex'],
       matchDatasources: ['golang-version'],
       enabled: true,
       automerge: true,
-      automergeType: 'branch',
+      automergeType: 'pr',
       groupName: 'Go toolchain',
       groupSlug: 'go-toolchain',
       semanticCommitType: 'chore',

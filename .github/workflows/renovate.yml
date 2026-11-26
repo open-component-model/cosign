@@ -73,16 +73,18 @@ jobs:
           sudo chown -R 12021:0 /tmp/renovate/
           ls -R "$cache_dir" || true
 
+      # Renovate runs as ocm-bot-renovate: it pushes renovate/** branches and fast-forwards
+      # the highest ocm/v* branch.
       - if: ${{ github.event_name != 'pull_request' && github.repository_owner == 'open-component-model' }}
         id: generate_token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.OCMBOT_APP_ID }}
-          private-key: ${{ secrets.OCMBOT_PRIV_KEY }}
+          client-id: ${{ secrets.RENOVATE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_BOT_PRIVATE_KEY }}
           repositories: ${{ github.event.repository.name }}
           # Post per-PR check results.
           permission-checks: write
-          # Push Renovate branches.
+          # Push renovate/** branches and fast-forward ocm/v*; commits are created through the API (signed).
           permission-contents: write
           # Maintain the dependency dashboard issue.
           permission-issues: write
@@ -120,7 +122,7 @@ jobs:
           token: ${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}
         env:
           RENOVATE_ONBOARDING: 'false'
-          RENOVATE_USERNAME: 'ocmbot[bot]'
+          RENOVATE_USERNAME: 'ocm-bot-renovate[bot]'
           RENOVATE_PLATFORM: 'github'
           RENOVATE_PLATFORM_COMMIT: 'enabled'
           RENOVATE_REPOSITORIES: "${{ github.repository }}"
