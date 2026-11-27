@@ -34,8 +34,8 @@ on a maintenance branch; change `overlay/` on `main` and Sync upstream propagate
   above `v3.1.3`, and refreshes the overlay on the highest maintenance branch.
 - **Renovate** (02:00 and 14:00 UTC) opens Go module security updates (OSV and GitHub
   vulnerability alerts) on the highest maintenance branch and Go toolchain updates on `main`.
-  It fast-forwards each update once CI passes; failing updates become PRs (security ones
-  labelled `security`).
+  It fast-forwards each update as soon as CI passes (a green CI run starts Renovate);
+  failing updates become PRs (security ones labelled `security`).
 - **Release schedule** (daily 06:00 UTC) runs **OCM Release** on the highest maintenance branch
   if it changed outside the overlay (or in `GO_VERSION`/the Containerfile) since its last
   release: tests, FIPS binaries, multi-arch image, GitHub release `vX.Y.Z+ocm.N` with

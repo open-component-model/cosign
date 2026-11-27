@@ -1,7 +1,15 @@
 name: Renovate
 on:
   schedule:
-    - cron: '0 2,14 * * *' # Every 12h: each run merges the green batches from the previous run and opens the next
+    - cron: '0 2,14 * * *' # Every 12h: opens new updates and merges any still waiting
+  # A green OCM CI run on a Renovate branch starts a run right away, which fast-forwards
+  # the branch into its ocm/v* base. Without it, the merge waits for the next 12h slot and
+  # can miss the 06:00 release. The job's `if` admits only successful push runs in this
+  # repository; nothing from the triggering run is checked out or used.
+  workflow_run: # zizmor: ignore[dangerous-triggers] see above
+    workflows: ['OCM CI']
+    types: [completed]
+    branches: ['renovate/**']
   workflow_dispatch:
     inputs:
       repoCache:
@@ -23,7 +31,8 @@ on:
       - .github/renovate.json5
       - .github/workflows/renovate.yml
 
-# Live runs never overlap (12h schedule + pushes); PR dry-runs are independent.
+# Live runs never overlap (schedule, pushes, green CI on Renovate branches): one waits, and
+# of several waiting runs GitHub keeps the newest, which covers them all. PR dry-runs are independent.
 concurrency:
   group: renovate-${{ github.event_name == 'pull_request' && github.ref || 'live' }}
   cancel-in-progress: false
@@ -39,6 +48,13 @@ env:
 
 jobs:
   renovate:
+    # Renovate branches are pushed by ocm-bot-renovate in this repository; fork PRs into
+    # ocm/v* also run OCM CI (pull_request) and must not start a run.
+    if: >-
+      github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-26.04-arm
     environment:
       name: automation
@@ -104,6 +120,7 @@ jobs:
       # $default (main) plus the highest ocm/vX.Y.Z only; older maintenance branches are frozen.
       # Passed as force config: it overrides baseBranchPatterns of .github/renovate.json5.
       - name: Pick highest maintenance branch
+        id: force
         env:
           IGNORE_SCHEDULE: ${{ github.event_name == 'workflow_dispatch' && inputs.ignoreSchedule }}
         run: |
@@ -111,7 +128,7 @@ jobs:
           if [ -n "$b" ]; then p="[\"\$default\",\"${b}\"]"; else p='["$default"]'; fi
           f="{\"baseBranchPatterns\":${p}"
           if [ "$IGNORE_SCHEDULE" = true ]; then f="${f},\"schedule\":null"; fi
-          echo "RENOVATE_FORCE=${f}}" >> "$GITHUB_ENV"
+          echo "config=${f}}" >> "$GITHUB_OUTPUT"
           echo "Renovate base branches: ${p}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run
@@ -121,6 +138,7 @@ jobs:
             ^(?:RENOVATE_\w+|LOG_LEVEL|GITHUB_COM_TOKEN|NODE_OPTIONS|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$
           token: ${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}
         env:
+          RENOVATE_FORCE: ${{ steps.force.outputs.config }}
           RENOVATE_ONBOARDING: 'false'
           RENOVATE_USERNAME: 'ocm-bot-renovate[bot]'
           RENOVATE_PLATFORM: 'github'
