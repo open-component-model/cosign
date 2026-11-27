@@ -1,11 +1,14 @@
 # Managed by main (overlay/). Edits on maintenance branches are overwritten by Sync upstream.
 name: OCM Release
 
-# Dispatched daily by Release schedule on main (schedule triggers only fire on the default branch) or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
+# Runs on maintenance-branch pushes, or is dispatched daily by Release schedule on main
+# or manually: gh workflow run ocm-release.yml --ref ocm/vX.Y.Z
 on:
+  push:
+    branches: ['ocm/v*']
   workflow_dispatch: {}
 
-# Serialize releases per branch: a queued second dispatch finds no diff to the release the first one created and skips.
+# Serialize releases per branch; duplicate or already released snapshots skip in version.
 concurrency:
   group: ocm-release-${{ github.ref_name }}
   cancel-in-progress: false
@@ -19,6 +22,7 @@ env:
 # release outside the OCM overlay (except GO_VERSION and Containerfile) skips everything after version.
 jobs:
   version:
+    if: github.event_name != 'push' || github.event.deleted != true
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -46,6 +50,13 @@ jobs:
           fi
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
+          highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$BASE" != "$highest" ]; then
+            echo "Push is not on the highest maintenance branch; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # N continues across the earlier -ocm.N git tags: images are tagged vX.Y.Z-ocm.N
           # in both schemes, so reusing an N would overwrite an existing image tag.
           last="$(git tag --list "${BASE}+ocm.*" "${BASE}-ocm.*" | sed -E "s/^${BASE}[+-]ocm\.//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)"
@@ -57,6 +68,11 @@ jobs:
           last_tag=""
           if [ -n "$last" ]; then
             last_tag="$(git tag --list "${BASE}+ocm.${last}" "${BASE}-ocm.${last}" | head -1)"
+            if git merge-base --is-ancestor HEAD "$last_tag"; then
+              echo "Commit already included in ${last_tag}; nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             overlay_excludes=(':(exclude).github/workflows/ocm-*.yml' ':(exclude).github/ocm')
             go_old="$(git show "${last_tag}:.github/ocm/.env" 2>/dev/null | grep -E '^GO_VERSION=' || true)"
             go_new="$(grep -E '^GO_VERSION=' .github/ocm/.env || true)"
@@ -76,7 +92,6 @@ jobs:
           # OCI tags cannot contain '+'; images use vX.Y.Z-ocm.N instead.
           IMAGE_TAG="${VERSION/+/-}"
 
-          highest="$(git ls-remote --heads origin 'refs/heads/ocm/v*' | sed 's#.*refs/heads/ocm/##' | sort -V | tail -1)"
           if [ "$BASE" = "$highest" ]; then LATEST=true; else LATEST=false; fi
 
           {

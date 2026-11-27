@@ -3,7 +3,7 @@
 Everything runs from `main`. Only the highest maintenance branch `ocm/vX.Y.Z` is maintained: it
 receives bot commits (overlay refreshes from Sync upstream, Go module security updates from
 Renovate) plus the occasional reviewed [security patch](#security-patches). Older maintenance
-branches are frozen: no updates, no overlay refresh, no scheduled releases. Nobody pushes to
+branches are frozen: no updates, no overlay refresh, no automatic releases. Nobody pushes to
 maintenance branches by hand.
 
 ## Overview
@@ -17,7 +17,8 @@ flowchart LR
   RB -->|OCM CI green: Renovate runs again, fast-forward| B
   RM -->|Control CI green + approval: PR auto-merge| O
   RB -.->|CI red| P[PR stays open]
-  S[Release schedule, 06:00] -->|releasable changes| REL[OCM Release on highest ocm/vX.Y.Z]
+  B -->|push with releasable changes| REL[OCM Release on highest ocm/vX.Y.Z]
+  S[Release schedule, 06:00] -->|daily catch-up| REL
   REL --> A[GitHub release vX.Y.Z+ocm.N + image + attestations]
 ```
 
@@ -39,17 +40,20 @@ flowchart LR
 | Release schedule | `.github/workflows/release-schedule.yml` | daily 06:00 UTC | `ubuntu-slim` |
 | Control CI | `.github/workflows/control-ci.yml` | pushes to `main` and `renovate/**`, PRs into `main`, weekly Monday 05:41 (cache seeding) | `ubuntu-slim`, `ubuntu-26.04-arm`, `ubuntu-26.04` |
 | OCM CI | `overlay/.github/workflows/ocm-ci.yml` (on `ocm/v*`) | pushes to `renovate/**`, PRs into `ocm/v*`, called by OCM Release | `ubuntu-26.04-arm`, `ubuntu-26.04` (e2e) |
-| OCM Release | `overlay/.github/workflows/ocm-release.yml` (on `ocm/v*`) | dispatched by Release schedule or by hand | `ubuntu-slim`, `ubuntu-26.04-arm` |
+| OCM Release | `overlay/.github/workflows/ocm-release.yml` (on `ocm/v*`) | pushes to `ocm/v*` (only the highest releases automatically), Release schedule, manual dispatch | `ubuntu-slim`, `ubuntu-26.04-arm` |
 
-`schedule` only fires on the default branch, so Release schedule dispatches OCM Release on
-the highest maintenance branch. Updates that went green after the 14:00 run are merged at
-02:00, so the 06:00 release picks them up.
+OCM Release starts on maintenance-branch pushes, including PR merges and bot updates. Only
+the highest maintenance branch releases automatically; older branches require manual dispatch.
+Release schedule remains a daily catch-up: `schedule` only fires on the default branch, so it
+dispatches OCM Release on the highest maintenance branch at 06:00 UTC.
 
 OCM Release only releases when something changed since the last `vX.Y.Z+ocm.N` tag outside
 the overlay (`go.mod`/`go.sum`, sources), in `.github/ocm/Containerfile`, or in `GO_VERSION`.
 Other overlay changes (workflows, scripts, test pins) ship with the next such release; a
-dispatch without one ends after the `version` job ("nothing to release"). Dispatching OCM
-Release or Release schedule by hand is therefore safe.
+run without one ends after the `version` job ("nothing to release"). Runs are serialized per
+branch, and snapshots already included in a published release also skip. Rapid pushes may
+coalesce; not every commit gets a separate release. Dispatching OCM Release or Release schedule
+by hand remains safe.
 
 Renovate reads its config from `main`. The PR dry run therefore checks the workflow change
 (base branch pick in the job summary) but not a config change in the same PR: before
@@ -73,13 +77,13 @@ Every other dependency is disabled (`security:only-security-updates`). Renovate 
 update to a `renovate/…` branch.
 
 - Maintenance branch: a green OCM CI run on the branch starts Renovate right away
-  (`workflow_run`), which fast-forwards `ocm/vX.Y.Z` minutes after CI, so the fix is in the
-  next 06:00 release. When CI fails, Renovate opens a PR instead.
+  (`workflow_run`), which fast-forwards `ocm/vX.Y.Z` minutes after CI and triggers OCM Release.
+  When CI fails, Renovate opens a PR instead.
 - `main`: Renovate opens a PR with GitHub auto-merge, which merges once Control CI passes and
   someone approved it (`main` takes changes only through a reviewed PR).
 
 A `GO_VERSION` merge on `main` changes `overlay/`, so Sync upstream propagates it to the
-highest maintenance branch, and its next release ships it.
+highest maintenance branch. That push triggers OCM Release to ship the toolchain update.
 
 The `fix(deps)`/`chore(deps)` prefixes put the updates under "Dependencies" in the release
 notes (`overlay/.github/ocm/cliff.toml`).
