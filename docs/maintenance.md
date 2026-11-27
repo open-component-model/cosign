@@ -14,7 +14,7 @@ flowchart LR
   O[main overlay/] -->|Sync upstream, on change| B
   R[Renovate, 02:00 + 14:00] -->|Go module security fixes| RB[renovate/* branch off ocm/vX.Y.Z]
   R -->|GO_VERSION| RM[renovate/go-toolchain off main]
-  RB -->|OCM CI green: fast-forward| B
+  RB -->|OCM CI green: Renovate runs again, fast-forward| B
   RM -->|Control CI green + approval: PR auto-merge| O
   RB -.->|CI red| P[PR stays open]
   S[Release schedule, 06:00] -->|releasable changes| REL[OCM Release on highest ocm/vX.Y.Z]
@@ -35,7 +35,7 @@ flowchart LR
 | Workflow | File (on `main`) | Trigger | Runner |
 |---|---|---|---|
 | Sync upstream | `.github/workflows/sync-upstream.yml` | hourly at :17, pushes to `overlay/`/`hack/`, dispatch with `tag` | `ubuntu-slim` |
-| Renovate | `.github/workflows/renovate.yml` | 02:00 and 14:00 UTC, pushes to `main`, dispatch; dry run (`extract`) on PRs changing its config | `ubuntu-26.04-arm` |
+| Renovate | `.github/workflows/renovate.yml` | 02:00 and 14:00 UTC, pushes to `main`, green OCM CI on `renovate/**`, dispatch; dry run (`extract`) on PRs changing its config | `ubuntu-26.04-arm` |
 | Release schedule | `.github/workflows/release-schedule.yml` | daily 06:00 UTC | `ubuntu-slim` |
 | Control CI | `.github/workflows/control-ci.yml` | pushes to `main` and `renovate/**`, PRs into `main`, weekly Monday 05:41 (cache seeding) | `ubuntu-slim`, `ubuntu-26.04-arm`, `ubuntu-26.04` |
 | OCM CI | `overlay/.github/workflows/ocm-ci.yml` (on `ocm/v*`) | pushes to `renovate/**`, PRs into `ocm/v*`, called by OCM Release | `ubuntu-26.04-arm`, `ubuntu-26.04` (e2e) |
@@ -72,8 +72,9 @@ which overrides `baseBranchPatterns` in the config file.
 Every other dependency is disabled (`security:only-security-updates`). Renovate pushes each
 update to a `renovate/…` branch.
 
-- Maintenance branch: once OCM CI passes, the next run fast-forwards `ocm/vX.Y.Z`. When CI
-  fails, Renovate opens a PR instead.
+- Maintenance branch: a green OCM CI run on the branch starts Renovate right away
+  (`workflow_run`), which fast-forwards `ocm/vX.Y.Z` minutes after CI, so the fix is in the
+  next 06:00 release. When CI fails, Renovate opens a PR instead.
 - `main`: Renovate opens a PR with GitHub auto-merge, which merges once Control CI passes and
   someone approved it (`main` takes changes only through a reviewed PR).
 
@@ -107,8 +108,8 @@ updated by hand through a PR into `main`. `GO_VERSION` is updated by Renovate th
 
 ### Fixing a failing update
 
-- **Flaky test**: re-run the failed jobs of the branch's CI run. Once it is green, the next
-  Renovate run merges it.
+- **Flaky test**: re-run the failed jobs of the branch's CI run. Once it is green, Renovate
+  starts and merges it.
 - **Code fix needed**: open a PR from your fork into `ocm/vX.Y.Z` with the update and the fix
   (nobody but Renovate can push to `renovate/…` branches). An org owner merges it with a squash
   merge. If the fix is a source change, record it under [security patches](#security-patches).
