@@ -56,8 +56,10 @@ jobs:
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-26.04-arm
+    # The PR dry run uses no secrets (the token step is skipped) and runs outside the
+    # environment, which does not admit pull request refs.
     environment:
-      name: automation
+      name: ${{ github.event_name != 'pull_request' && 'automation' || '' }}
       deployment: false
     steps:
       - name: Checkout
